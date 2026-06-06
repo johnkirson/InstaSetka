@@ -11,8 +11,10 @@ permissions:
 
 jobs:
   build-macos:
-    name: Build unsigned macOS app
+    name: Build universal ad-hoc macOS app
     runs-on: macos-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
     steps:
       - name: Checkout
