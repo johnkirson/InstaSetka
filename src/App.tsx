@@ -232,10 +232,10 @@ const advancedTourSteps: TourStep[] = [
   },
   {
     id: "mosaic",
-    target: "[data-tour='mosaic']",
+    target: "[data-tour='grid']",
     eyebrow: "Advanced",
     title: "Split one image across slots",
-    body: "Turn on Mosaic, select up to 12 slots, then drag one image onto the selected area for a continuous split.",
+    body: "Ctrl-click grid slots in the order you want, then drag one image onto the selected slots for a continuous split.",
     placement: "bottom",
   },
   {
@@ -377,7 +377,6 @@ export function App() {
   const [qualityMapOpen, setQualityMapOpen] = useState(false);
   const [isTourOpen, setIsTourOpen] = useState(false);
   const [tourMode, setTourMode] = useState<TourMode>("quick");
-  const [mosaicSelectionMode, setMosaicSelectionMode] = useState(false);
   const [splitCount, setSplitCount] = useState(3);
   const [splitDirection, setSplitDirection] = useState<"auto" | SplitDirection>("auto");
   const [gridZoom, setGridZoom] = useState(() => {
@@ -1113,9 +1112,6 @@ export function App() {
 
     event.preventDefault();
     event.currentTarget.setPointerCapture(event.pointerId);
-    setSelectedGridSpanIndexes([]);
-    setSelectedGridSlotIndex(null);
-    setCropEditSlotIndex(null);
     const start = { x: event.clientX, y: event.clientY };
     const shouldPanCanvas = event.button === 1 || event.button === 2 || event.altKey;
     const boardRect = event.currentTarget.getBoundingClientRect();
@@ -1362,16 +1358,30 @@ export function App() {
     window.addEventListener("pointerup", handlePointerUp, { once: true });
   }
 
+  function clearGridSelection() {
+    setSelectedGridSpanIndexes([]);
+    setSelectedGridSlotIndex(null);
+    setCropEditSlotIndex(null);
+  }
+
+  function handleGridOrganizerPointerDown(event: ReactPointerEvent<HTMLElement>) {
+    const target = event.target as HTMLElement;
+    const interactiveArea = target.closest(
+      ".grid-cell, .crop-panel, .quality-map, .pane-actions, .grid-selection-hint",
+    );
+
+    if (interactiveArea) {
+      return;
+    }
+
+    clearGridSelection();
+  }
+
   function handleGridPostPointerDown(event: ReactPointerEvent<HTMLElement>, fromIndex: number) {
     event.preventDefault();
     event.stopPropagation();
     setSelectedCanvasItemIds([]);
     const post = gridSlots[fromIndex]?.post;
-
-    if (mosaicSelectionMode) {
-      beginGridMosaicBrush(event, fromIndex);
-      return;
-    }
 
     if (event.shiftKey) {
       selectGridRange(fromIndex);
@@ -1379,7 +1389,7 @@ export function App() {
     }
 
     if (event.ctrlKey || event.metaKey) {
-      beginGridMosaicBrush(event, fromIndex);
+      toggleGridMosaicSlot(fromIndex);
       return;
     }
 
@@ -1440,18 +1450,13 @@ export function App() {
     setSelectedCanvasItemIds([]);
     setCropEditSlotIndex(null);
 
-    if (mosaicSelectionMode) {
-      beginGridMosaicBrush(event, slotIndex);
-      return;
-    }
-
     if (event.shiftKey) {
       selectGridRange(slotIndex);
       return;
     }
 
     if (event.ctrlKey || event.metaKey) {
-      beginGridMosaicBrush(event, slotIndex);
+      toggleGridMosaicSlot(slotIndex);
       return;
     }
 
@@ -1475,69 +1480,21 @@ export function App() {
     setSelectedGridSlotIndex(slotIndex);
     setCropEditSlotIndex(null);
     setSelectedGridSpanIndexes((currentIndexes) => {
-      const selectedIndexes = new Set(currentIndexes.length > 0 ? currentIndexes : [slotIndex]);
-      if (selectedIndexes.has(slotIndex) && selectedIndexes.size > 1) {
+      const startingIndexes =
+        currentIndexes.length > 0
+          ? currentIndexes
+          : selectedGridSlotIndex !== null && selectedGridSlotIndex !== slotIndex
+            ? [selectedGridSlotIndex, slotIndex]
+            : [slotIndex];
+      const selectedIndexes = new Set(startingIndexes);
+      if (currentIndexes.includes(slotIndex) && selectedIndexes.size > 1) {
         selectedIndexes.delete(slotIndex);
-      } else if (selectedIndexes.size < 12) {
+      } else if (!selectedIndexes.has(slotIndex) && selectedIndexes.size < 12) {
         selectedIndexes.add(slotIndex);
       }
 
       return normalizeGridSelection([...selectedIndexes]);
     });
-  }
-
-  function addGridMosaicSlot(slotIndex: number) {
-    setSelectedGridSlotIndex(slotIndex);
-    setCropEditSlotIndex(null);
-    setSelectedGridSpanIndexes((currentIndexes) => {
-      if (currentIndexes.includes(slotIndex)) {
-        return currentIndexes;
-      }
-
-      if (currentIndexes.length >= 12) {
-        return currentIndexes;
-      }
-
-      return normalizeGridSelection([...currentIndexes, slotIndex]);
-    });
-  }
-
-  function beginGridMosaicBrush(event: ReactPointerEvent<HTMLElement>, slotIndex: number) {
-    event.preventDefault();
-    event.stopPropagation();
-    event.currentTarget.setPointerCapture(event.pointerId);
-    const visitedSlots = new Set([slotIndex]);
-    let hasMovedAcrossSlots = false;
-
-    setSelectedCanvasItemIds([]);
-    toggleGridMosaicSlot(slotIndex);
-
-    function handlePointerMove(moveEvent: PointerEvent) {
-      const slotElement = document
-        .elementFromPoint(moveEvent.clientX, moveEvent.clientY)
-        ?.closest<HTMLElement>("[data-grid-slot-index]");
-      const nextSlotIndex = slotElement ? Number(slotElement.dataset.gridSlotIndex) : Number.NaN;
-
-      if (!Number.isFinite(nextSlotIndex) || visitedSlots.has(nextSlotIndex)) {
-        return;
-      }
-
-      visitedSlots.add(nextSlotIndex);
-      hasMovedAcrossSlots = true;
-      addGridMosaicSlot(nextSlotIndex);
-    }
-
-    function handlePointerUp() {
-      if (hasMovedAcrossSlots) {
-        addGridMosaicSlot(slotIndex);
-      }
-
-      window.removeEventListener("pointermove", handlePointerMove);
-      window.removeEventListener("pointerup", handlePointerUp);
-    }
-
-    window.addEventListener("pointermove", handlePointerMove);
-    window.addEventListener("pointerup", handlePointerUp, { once: true });
   }
 
   function toggleCropEditMode(slotIndex: number) {
@@ -2614,7 +2571,7 @@ export function App() {
           onPointerDown={handleDividerPointerDown}
         />
 
-        <section className="grid-organizer" aria-label="Grid Organizer">
+        <section className="grid-organizer" aria-label="Grid Organizer" onPointerDown={handleGridOrganizerPointerDown}>
           <div className="pane-header">
             <div>
               <p className="eyebrow">Grid Organizer</p>
@@ -2636,16 +2593,9 @@ export function App() {
               <button className="button secondary" data-tour="quality" onClick={() => setQualityMapOpen((current) => !current)}>
                 Quality map
               </button>
-              <button
-                className={`button secondary ${mosaicSelectionMode ? "is-active" : ""}`}
-                data-tour="mosaic"
-                onClick={() => setMosaicSelectionMode((current) => !current)}
-              >
-                Mosaic
-              </button>
               {selectedGridSpanIndexes.length > 0 ? (
                 <button className="button secondary" onClick={() => setSelectedGridSpanIndexes([])}>
-                  Clear
+                  Clear selection
                 </button>
               ) : null}
               <button className="button danger" data-tour="clear-grid" onClick={clearGridSlots}>
@@ -2654,12 +2604,6 @@ export function App() {
               </button>
             </div>
           </div>
-
-          {selectedGridSpanIndexes.length > 1 ? (
-            <div className="grid-selection-hint">
-              {selectedGridSpanIndexes.length} slots selected for mosaic split
-            </div>
-          ) : null}
 
           {qualityMapOpen ? (
             <div className="quality-map" aria-label="Quality map panel">
@@ -2695,8 +2639,13 @@ export function App() {
             </div>
           ) : null}
 
-          {selectedSlide ? (
-            <div className="crop-panel" data-tour="crop-panel" aria-label="Crop controls">
+          <div
+            className={`crop-panel ${selectedSlide ? "" : "is-empty"}`}
+            data-tour="crop-panel"
+            aria-label={selectedSlide ? "Crop controls" : "Grid selection status"}
+          >
+            {selectedSlide ? (
+              <>
               <div>
                 <p className="eyebrow">Crop</p>
                 <strong>
@@ -2768,8 +2717,27 @@ export function App() {
                   </span>
                 </div>
               ) : null}
-            </div>
-          ) : null}
+              </>
+            ) : (
+              <>
+                <div>
+                  <p className="eyebrow">Selection</p>
+                  <strong>
+                    {selectedGridSpanIndexes.length > 1
+                      ? `${selectedGridSpanIndexes.length} slots selected`
+                      : selectedGridSpanIndexes.length === 1
+                        ? `Slot ${selectedGridSpanIndexes[0] + 1} selected`
+                        : "Grid ready"}
+                  </strong>
+                </div>
+                <p className="crop-hint">
+                  {selectedGridSpanIndexes.length > 1
+                    ? "Drop one source image onto the selected slots to split it in that order."
+                    : "Ctrl-click slots to build a multi-slot split, or click a filled post to edit crop."}
+                </p>
+              </>
+            )}
+          </div>
 
           <div ref={gridViewportRef} className="grid-viewport" data-tour="grid" onWheel={handleGridViewportWheel}>
             <div
@@ -3224,7 +3192,6 @@ function getFallbackSlotSizeForAspect(aspectRatio: AspectRatio): SlotSize {
 function normalizeGridSelection(slotIndexes: number[]): number[] {
   return [...new Set(slotIndexes)]
     .filter((slotIndex) => slotIndex >= 0)
-    .sort((left, right) => left - right)
     .slice(0, 12);
 }
 

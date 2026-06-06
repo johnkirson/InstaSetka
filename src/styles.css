@@ -685,11 +685,17 @@ h2 {
   grid-template-columns: minmax(110px, 0.7fr) minmax(170px, 1.3fr) repeat(6, auto);
   align-items: center;
   gap: 10px;
+  min-height: 112px;
   margin: 0 0 12px;
   padding: 10px;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-control);
   background: var(--color-surface);
+}
+
+.crop-panel.is-empty {
+  grid-template-columns: minmax(160px, auto) 1fr;
+  align-content: center;
 }
 
 .crop-panel strong {
