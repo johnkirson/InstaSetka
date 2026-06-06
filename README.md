@@ -40,14 +40,42 @@ Build artifacts are generated under `src-tauri/target/release/` and are intentio
 
 ## Cloudflare Pages web build
 
-Use these build settings in Cloudflare Pages:
+The web version is configured for Wrangler-based Cloudflare Pages deploys.
+
+First authenticate Wrangler:
+
+```bash
+npx wrangler login
+```
+
+Then create or connect the Pages project once in Cloudflare. The project name used by the scripts is `instasetka`.
+
+Preview the built Pages app locally:
+
+```bash
+npm run pages:dev
+```
+
+Deploy a preview build from the current branch:
+
+```bash
+npm run pages:deploy:preview
+```
+
+Deploy production:
+
+```bash
+npm run pages:deploy
+```
+
+If you use the Cloudflare dashboard instead, use these build settings:
 
 - Framework preset: `React (Vite)`
 - Build command: `npm run build`
 - Build output directory: `dist`
 - Root directory: repository root
 
-The static web build uses `public/_headers` for browser security headers and `public/_redirects` for single-page app fallback routing.
+The static web build uses `public/_headers` for browser security headers and `public/_redirects` for single-page app fallback routing. Wrangler config lives in `wrangler.jsonc`.
 
 ## License
 
