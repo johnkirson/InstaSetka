@@ -36,12 +36,22 @@ jobs:
       - name: Build unsigned macOS bundle
         run: npm run tauri -- build --bundles app,dmg
 
+      - name: Package macOS artifacts
+        run: |
+          mkdir -p macos-artifacts
+          APP_PATH="$(find src-tauri/target/release/bundle/macos -maxdepth 1 -name '*.app' -type d | head -n 1)"
+          if [ -z "$APP_PATH" ]; then
+            echo "No .app bundle found"
+            exit 1
+          fi
+          chmod +x "$APP_PATH/Contents/MacOS/"*
+          ditto -c -k --keepParent "$APP_PATH" macos-artifacts/InstaSetka-macos-unsigned.app.zip
+          cp src-tauri/target/release/bundle/dmg/*.dmg macos-artifacts/
+
       - name: Upload macOS app artifacts
         uses: actions/upload-artifact@v4
         with:
           name: InstaSetka-macos-unsigned
-          path: |
-            src-tauri/target/release/bundle/macos/*.app
-            src-tauri/target/release/bundle/dmg/*.dmg
+          path: macos-artifacts/*
           if-no-files-found: error
           retention-days: 14
