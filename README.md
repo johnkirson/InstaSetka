@@ -2,6 +2,8 @@
 
 Local Windows app for planning an Instagram grid, cropping posts, building carousels, splitting images across multiple slots, and exporting high-quality JPEG/PNG output.
 
+The web build can run as a static browser app on Cloudflare Pages. Image files are processed locally in the user's browser with File, IndexedDB, and Canvas APIs; no image upload backend is required.
+
 ## Features
 
 - Source canvas for importing, arranging, comparing, and lasso-selecting images.
@@ -35,6 +37,17 @@ npm run tauri build
 ```
 
 Build artifacts are generated under `src-tauri/target/release/` and are intentionally ignored by Git.
+
+## Cloudflare Pages web build
+
+Use these build settings in Cloudflare Pages:
+
+- Framework preset: `React (Vite)`
+- Build command: `npm run build`
+- Build output directory: `dist`
+- Root directory: repository root
+
+The static web build uses `public/_headers` for browser security headers and `public/_redirects` for single-page app fallback routing.
 
 ## License
 
