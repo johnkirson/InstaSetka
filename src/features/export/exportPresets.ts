@@ -95,16 +95,38 @@ export function getSourceCropRect(
   crop: CropState,
   slot: SlotSize,
 ): SourceCropRect {
-  const coverScale = Math.max(slot.width / asset.width, slot.height / asset.height);
+  const rotation = normalizeRotation(crop.rotation);
+  const radians = (rotation * Math.PI) / 180;
+  const rotated = rotation % 180 === 90;
+  const coverWidth = rotated ? asset.height : asset.width;
+  const coverHeight = rotated ? asset.width : asset.height;
+  const coverScale = Math.max(slot.width / coverWidth, slot.height / coverHeight);
   const renderedScale = coverScale * crop.scale;
-  const renderedWidth = asset.width * renderedScale;
-  const renderedHeight = asset.height * renderedScale;
-  const sx = (renderedWidth / 2 - slot.width / 2 - crop.x) / renderedScale;
-  const sy = (renderedHeight / 2 - slot.height / 2 - crop.y) / renderedScale;
-  const sw = slot.width / renderedScale;
-  const sh = slot.height / renderedScale;
+  const cos = Math.cos(radians);
+  const sin = Math.sin(radians);
+  const slotCorners = [
+    { x: -slot.width / 2, y: -slot.height / 2 },
+    { x: slot.width / 2, y: -slot.height / 2 },
+    { x: slot.width / 2, y: slot.height / 2 },
+    { x: -slot.width / 2, y: slot.height / 2 },
+  ];
+  const sourceCorners = slotCorners.map((corner) => {
+    const offsetX = corner.x - crop.x;
+    const offsetY = corner.y - crop.y;
+    const unrotatedX = cos * offsetX + sin * offsetY;
+    const unrotatedY = -sin * offsetX + cos * offsetY;
 
-  return clampSourceCropRect({ sx, sy, sw, sh }, asset);
+    return {
+      x: unrotatedX / renderedScale + asset.width / 2,
+      y: unrotatedY / renderedScale + asset.height / 2,
+    };
+  });
+  const left = Math.min(...sourceCorners.map((corner) => corner.x));
+  const top = Math.min(...sourceCorners.map((corner) => corner.y));
+  const right = Math.max(...sourceCorners.map((corner) => corner.x));
+  const bottom = Math.max(...sourceCorners.map((corner) => corner.y));
+
+  return clampSourceCropRect({ sx: left, sy: top, sw: right - left, sh: bottom - top }, asset);
 }
 
 function clampSourceCropRect(
@@ -121,4 +143,8 @@ function clampSourceCropRect(
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
+}
+
+function normalizeRotation(rotation: number): number {
+  return ((rotation % 360) + 360) % 360;
 }

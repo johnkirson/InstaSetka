@@ -4,6 +4,7 @@ export type CropBoundsInput = {
   imageWidth: number;
   imageHeight: number;
   scale: number;
+  rotation?: number;
 };
 
 export type CropOffset = {
@@ -25,11 +26,14 @@ export function clampCropOffset(input: CropBoundsInput, offset: CropOffset): Cro
 }
 
 function getCoverSize(input: CropBoundsInput): { width: number; height: number } {
-  const coverScale = Math.max(input.slotWidth / input.imageWidth, input.slotHeight / input.imageHeight);
+  const rotated = Math.abs(input.rotation ?? 0) % 180 === 90;
+  const coverWidth = rotated ? input.imageHeight : input.imageWidth;
+  const coverHeight = rotated ? input.imageWidth : input.imageHeight;
+  const coverScale = Math.max(input.slotWidth / coverWidth, input.slotHeight / coverHeight);
 
   return {
-    width: input.imageWidth * coverScale,
-    height: input.imageHeight * coverScale,
+    width: coverWidth * coverScale,
+    height: coverHeight * coverScale,
   };
 }
 

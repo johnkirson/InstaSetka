@@ -1,5 +1,6 @@
 import {
   AlignStartHorizontal,
+  ChevronDown,
   Copy,
   Download,
   Files,
@@ -10,7 +11,10 @@ import {
   HelpCircle,
   Moon,
   PanelLeft,
+  Plus,
   Redo2,
+  RotateCcw,
+  RotateCw,
   Save,
   ScanLine,
   Sun,
@@ -18,7 +22,7 @@ import {
   Undo2,
   Unlock,
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { memo, startTransition, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type {
   CSSProperties,
   ChangeEvent,
@@ -38,14 +42,14 @@ import {
   createCarouselExportFilename,
   createExportFilename,
   getExportPreset,
-  getSourceCropRect,
 } from "./features/export/exportPresets";
-import { renderSlideExport } from "./features/export/exportRenderer";
+import { drawCroppedImageOnCanvas, renderSlideExport } from "./features/export/exportRenderer";
 import { getSlideQualityPreflight, type SlideQualityPreflight } from "./features/quality/qualityPreflight";
 import {
   addSourceAsset,
   addSlideToPost,
   autoArrangeCanvasItems,
+  clearActiveGrid,
   convertPostToCarousel,
   createEmptyProject,
   defaultCrop,
@@ -60,6 +64,7 @@ import {
   removePostFromGridSlot,
   removeSlideFromPost,
   replacePostSlides,
+  rotateSlideCrop,
   setActiveGridVersion,
   setSlideCrop,
   setCanvasItemPosition,
@@ -173,16 +178,24 @@ const advancedTourSteps: TourStep[] = [
     id: "project-bar",
     target: "[data-tour='project-bar']",
     eyebrow: "Advanced",
-    title: "The command bar",
-    body: "This top bar keeps project actions, formats, import, and export close without covering the editor.",
+    title: "Grouped command bar",
+    body: "The top bar is grouped by workflow: history, project, format, versions, import, and export.",
     placement: "bottom",
   },
   {
     id: "history-theme",
     target: "[data-tour='history-theme']",
     eyebrow: "Advanced",
-    title: "Undo, redo, and theme",
-    body: "Use the arrow buttons or Ctrl+Z / Ctrl+Y while you experiment. The sun button switches dark and light mode.",
+    title: "Undo and redo",
+    body: "Use the arrow buttons or Ctrl+Z / Ctrl+Y while you experiment with crops, order, and versions.",
+    placement: "bottom",
+  },
+  {
+    id: "project-menu",
+    target: "[data-tour='project-menu']",
+    eyebrow: "Advanced",
+    title: "Project menu",
+    body: "Save or open editable InstaSetka projects, duplicate the current version, switch theme, or restart this tour.",
     placement: "bottom",
   },
   {
@@ -194,11 +207,11 @@ const advancedTourSteps: TourStep[] = [
     placement: "bottom",
   },
   {
-    id: "project-files",
-    target: "[data-tour='project-files']",
+    id: "versions",
+    target: "[data-tour='versions']",
     eyebrow: "Advanced",
-    title: "Save the editable plan",
-    body: "Save and Open use InstaSetka project packages, so crops, order, versions, and sources can be restored later.",
+    title: "Draft versions",
+    body: "Switch between saved grid drafts or press plus to create a new draft from the current arrangement.",
     placement: "bottom",
   },
   {
@@ -242,19 +255,19 @@ const advancedTourSteps: TourStep[] = [
     placement: "bottom",
   },
   {
-    id: "batch",
-    target: "[data-tour='batch']",
+    id: "export-options",
+    target: "[data-tour='export']",
     eyebrow: "Advanced",
-    title: "Render the whole feed",
-    body: "Batch writes every filled slot into a Batch render folder with ordered filenames.",
+    title: "Export options",
+    body: "Export renders the selected post. Open the arrow menu for batch render or one PNG feed snapshot.",
     placement: "bottom",
   },
   {
-    id: "snapshot",
-    target: "[data-tour='snapshot']",
+    id: "clear-grid",
+    target: "[data-tour='clear-grid']",
     eyebrow: "Advanced",
-    title: "Share the feed preview",
-    body: "Snapshot creates one PNG preview of the assembled feed, useful for sending the plan to someone else.",
+    title: "Clear the active grid",
+    body: "Clear grid removes posts from the active draft after confirmation while keeping source canvas images available.",
     placement: "bottom",
   },
 ];
@@ -281,6 +294,14 @@ type CanvasSelectionRect = {
   top: number;
   width: number;
   height: number;
+};
+
+type CanvasSelectionUpdater = string[] | ((currentIds: string[]) => string[]);
+
+type CanvasSelectionStore = {
+  getSnapshot: () => string[];
+  setSelection: (nextIds: string[]) => boolean;
+  subscribe: (listener: () => void) => () => void;
 };
 
 type GridDropHint = {
@@ -321,7 +342,12 @@ type DirectoryPickerWindow = Window &
 export function App() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const packageInputRef = useRef<HTMLInputElement>(null);
+  const projectMenuRef = useRef<HTMLDivElement>(null);
+  const exportMenuRef = useRef<HTMLDivElement>(null);
   const canvasBoardRef = useRef<HTMLDivElement>(null);
+  const canvasLayerRef = useRef<HTMLDivElement>(null);
+  const canvasSelectionRectRef = useRef<HTMLDivElement>(null);
+  const canvasSelectionStoreRef = useRef(createCanvasSelectionStore());
   const gridViewportRef = useRef<HTMLDivElement>(null);
   const workspaceRef = useRef<HTMLElement>(null);
   const lastGridPointerRef = useRef<{ slotIndex: number; time: number } | null>(null);
@@ -333,8 +359,7 @@ export function App() {
   const [projectHistory, setProjectHistory] = useState<ProjectHistory>({ past: [], future: [] });
   const [previewUrls, setPreviewUrls] = useState<Record<string, string>>({});
   const [autosaveStatus, setAutosaveStatus] = useState<AutosaveStatus>("loading");
-  const [selectedCanvasItemIds, setSelectedCanvasItemIds] = useState<string[]>([]);
-  const [canvasSelectionRect, setCanvasSelectionRect] = useState<CanvasSelectionRect | null>(null);
+  const [hasSelectedCanvasItems, setHasSelectedCanvasItems] = useState(false);
   const [gridDropHint, setGridDropHint] = useState<GridDropHint | null>(null);
   const [selectedGridSlotIndex, setSelectedGridSlotIndex] = useState<number | null>(null);
   const [selectedGridSpanIndexes, setSelectedGridSpanIndexes] = useState<number[]>([]);
@@ -347,6 +372,8 @@ export function App() {
   const [activeAspectRatio, setActiveAspectRatio] = useState<AspectRatio>("4:5");
   const [exportFormat, setExportFormat] = useState<ExportFormat>("jpeg");
   const [exportStatus, setExportStatus] = useState("Ready to export");
+  const [projectMenuOpen, setProjectMenuOpen] = useState(false);
+  const [exportMenuOpen, setExportMenuOpen] = useState(false);
   const [qualityMapOpen, setQualityMapOpen] = useState(false);
   const [isTourOpen, setIsTourOpen] = useState(false);
   const [tourMode, setTourMode] = useState<TourMode>("quick");
@@ -385,7 +412,6 @@ export function App() {
   }));
   const selectedGridPost =
     selectedGridSlotIndex !== null ? gridSlots[selectedGridSlotIndex]?.post : undefined;
-  const hasSelectedCanvasItems = selectedCanvasItemIds.length > 0;
   const selectedCarouselPost = selectedGridPost?.kind === "carousel" ? selectedGridPost : undefined;
   const carouselMode = Boolean(
     selectedCarouselPost && selectedCarouselPost.id === carouselEditorPostId,
@@ -419,6 +445,21 @@ export function App() {
       aspectRatio: activeAspectRatio,
     });
   }, [activeAspectRatio, selectedSlide, selectedSlotSize, sourceAssetById]);
+
+  function getSelectedCanvasItemIds() {
+    return canvasSelectionStoreRef.current.getSnapshot();
+  }
+
+  function setSelectedCanvasItemIds(nextSelection: CanvasSelectionUpdater) {
+    const currentIds = canvasSelectionStoreRef.current.getSnapshot();
+    const nextIds =
+      typeof nextSelection === "function" ? nextSelection(currentIds) : nextSelection;
+
+    if (canvasSelectionStoreRef.current.setSelection(nextIds)) {
+      setHasSelectedCanvasItems(nextIds.length > 0);
+    }
+  }
+
   const qualityMapIssues = useMemo<QualityMapIssue[]>(() => {
     const issues: QualityMapIssue[] = [];
     const sourceUseCounts = new Map<string, number>();
@@ -599,6 +640,37 @@ export function App() {
   }, [gridZoom]);
 
   useEffect(() => {
+    if (!projectMenuOpen && !exportMenuOpen) {
+      return;
+    }
+
+    function closeOpenMenus(event: MouseEvent) {
+      const target = event.target as Node;
+      if (!projectMenuRef.current?.contains(target)) {
+        setProjectMenuOpen(false);
+      }
+      if (!exportMenuRef.current?.contains(target)) {
+        setExportMenuOpen(false);
+      }
+    }
+
+    function closeOpenMenusOnEscape(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setProjectMenuOpen(false);
+        setExportMenuOpen(false);
+      }
+    }
+
+    document.addEventListener("mousedown", closeOpenMenus);
+    document.addEventListener("keydown", closeOpenMenusOnEscape);
+
+    return () => {
+      document.removeEventListener("mousedown", closeOpenMenus);
+      document.removeEventListener("keydown", closeOpenMenusOnEscape);
+    };
+  }, [exportMenuOpen, projectMenuOpen]);
+
+  useEffect(() => {
     if (selectedGridSlotIndex === null) {
       setSelectedSlotSize(null);
       return;
@@ -666,7 +738,7 @@ export function App() {
         return;
       }
 
-      if (selectedCanvasItemIds.length > 0) {
+      if (hasSelectedCanvasItems) {
         event.preventDefault();
         deleteSelectedCanvasItems();
       }
@@ -674,7 +746,7 @@ export function App() {
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [projectHistory, selectedCanvasItemIds, selectedGridPost, selectedGridSlotIndex]);
+  }, [projectHistory, hasSelectedCanvasItems, selectedGridPost, selectedGridSlotIndex]);
 
   async function importFiles(fileList: FileList | File[]) {
     const files = Array.from(fileList).filter((file) =>
@@ -918,6 +990,7 @@ export function App() {
     }
 
     event.currentTarget.setPointerCapture(event.pointerId);
+    const selectedCanvasItemIds = getSelectedCanvasItemIds();
     const draggedCanvasItemIds = selectedCanvasItemIds.includes(canvasItemId)
       ? selectedCanvasItemIds
       : [canvasItemId];
@@ -995,6 +1068,16 @@ export function App() {
     window.addEventListener("pointerup", handlePointerUp, { once: true });
   }
 
+  function handleCanvasLayerPointerDown(event: ReactPointerEvent<HTMLDivElement>) {
+    const itemElement = (event.target as HTMLElement).closest<HTMLElement>("[data-canvas-item-id]");
+    const canvasItemId = itemElement?.dataset.canvasItemId;
+    if (!canvasItemId) {
+      return;
+    }
+
+    handleCanvasItemPointerDown(event, canvasItemId);
+  }
+
   function getGridDropHint(clientX: number, clientY: number): GridDropHint | null {
     const dropTarget = document
       .elementFromPoint(clientX, clientY)
@@ -1036,49 +1119,123 @@ export function App() {
     const start = { x: event.clientX, y: event.clientY };
     const shouldPanCanvas = event.button === 1 || event.button === 2 || event.altKey;
     const boardRect = event.currentTarget.getBoundingClientRect();
-    const initialSelection = new Set(selectedCanvasItemIds);
+    const initialSelection = new Set(getSelectedCanvasItemIds());
+    const cachedItemRects = project.canvasItems.map((item) => ({
+      id: item.id,
+      rect: getCanvasItemRect(item, sourceAssetById.get(item.sourceImageId)),
+    }));
+    const liveCanvasView = { ...canvasView };
+    let panFrameId: number | null = null;
+    let selectionFrameId: number | null = null;
+    let latestSelectionPoint = start;
+    let latestSelectionRect: CanvasSelectionRect | null = null;
 
     if (!shouldPanCanvas) {
-      setCanvasSelectionRect({ left: start.x - boardRect.left, top: start.y - boardRect.top, width: 0, height: 0 });
+      applyCanvasSelectionRectStyle(canvasSelectionRectRef.current, {
+        left: start.x - boardRect.left,
+        top: start.y - boardRect.top,
+        width: 0,
+        height: 0,
+      });
     } else {
-      setCanvasSelectionRect(null);
+      hideCanvasSelectionRect(canvasSelectionRectRef.current);
+    }
+
+    function schedulePanTransform() {
+      if (panFrameId !== null) {
+        return;
+      }
+
+      panFrameId = window.requestAnimationFrame(() => {
+        panFrameId = null;
+        if (canvasLayerRef.current) {
+          canvasLayerRef.current.style.transform = getCanvasLayerTransform(liveCanvasView);
+        }
+      });
+    }
+
+    function getCurrentSelectionRect() {
+      return getNormalizedScreenRect(
+        start.x - boardRect.left,
+        start.y - boardRect.top,
+        latestSelectionPoint.x - boardRect.left,
+        latestSelectionPoint.y - boardRect.top,
+      );
+    }
+
+    function commitSelection(selectionRect: CanvasSelectionRect) {
+      const worldRect = screenRectToCanvasWorldRect(selectionRect, canvasView);
+      const selectedIds = getCanvasItemIdsInRect(cachedItemRects, worldRect);
+      const nextSelectionIds =
+        event.shiftKey || event.ctrlKey || event.metaKey
+          ? [...new Set([...initialSelection, ...selectedIds])]
+          : selectedIds;
+
+      startTransition(() => {
+        setSelectedCanvasItemIds((currentIds) =>
+          areStringArraysEqual(currentIds, nextSelectionIds) ? currentIds : nextSelectionIds,
+        );
+      });
+    }
+
+    function applySelectionUpdate() {
+      const selectionRect = getCurrentSelectionRect();
+      latestSelectionRect = selectionRect;
+      applyCanvasSelectionRectStyle(canvasSelectionRectRef.current, selectionRect);
+    }
+
+    function scheduleSelectionUpdate() {
+      if (selectionFrameId !== null) {
+        return;
+      }
+
+      selectionFrameId = window.requestAnimationFrame(() => {
+        selectionFrameId = null;
+        applySelectionUpdate();
+      });
     }
 
     function handlePointerMove(moveEvent: PointerEvent) {
       if (shouldPanCanvas) {
-        setCanvasView((currentView) => ({
-          ...currentView,
-          x: currentView.x + moveEvent.movementX,
-          y: currentView.y + moveEvent.movementY,
-        }));
+        liveCanvasView.x += moveEvent.movementX;
+        liveCanvasView.y += moveEvent.movementY;
+        schedulePanTransform();
         return;
       }
 
-      const selectionRect = getNormalizedScreenRect(
-        start.x - boardRect.left,
-        start.y - boardRect.top,
-        moveEvent.clientX - boardRect.left,
-        moveEvent.clientY - boardRect.top,
-      );
-      setCanvasSelectionRect(selectionRect);
-
-      const worldRect = screenRectToCanvasWorldRect(selectionRect, canvasView);
-      const selectedIds = getCanvasItemsInRect(project.canvasItems, sourceAssetById, worldRect);
-
-      if (event.shiftKey || event.ctrlKey || event.metaKey) {
-        setSelectedCanvasItemIds([...new Set([...initialSelection, ...selectedIds])]);
-      } else {
-        setSelectedCanvasItemIds(selectedIds);
-      }
+      latestSelectionPoint = {
+        x: moveEvent.clientX,
+        y: moveEvent.clientY,
+      };
+      scheduleSelectionUpdate();
     }
 
     function handlePointerUp() {
+      if (panFrameId !== null) {
+        window.cancelAnimationFrame(panFrameId);
+        panFrameId = null;
+      }
+      if (shouldPanCanvas) {
+        if (canvasLayerRef.current) {
+          canvasLayerRef.current.style.transform = "";
+        }
+        setCanvasView(liveCanvasView);
+      }
+
       if (!shouldPanCanvas) {
+        if (selectionFrameId !== null) {
+          window.cancelAnimationFrame(selectionFrameId);
+          selectionFrameId = null;
+          applySelectionUpdate();
+        }
+        const finalSelectionRect = latestSelectionRect ?? getCurrentSelectionRect();
         const movedDistance = Math.hypot(previousPointerX - start.x, previousPointerY - start.y);
         if (movedDistance < 4 && !(event.shiftKey || event.ctrlKey || event.metaKey)) {
           setSelectedCanvasItemIds([]);
+        } else {
+          commitSelection(finalSelectionRect);
         }
-        setCanvasSelectionRect(null);
+        hideCanvasSelectionRect(canvasSelectionRectRef.current);
       }
       window.removeEventListener("pointermove", trackPointer);
       window.removeEventListener("pointerup", handlePointerUp);
@@ -1461,6 +1618,7 @@ export function App() {
                   imageWidth: imageElement.naturalWidth,
                   imageHeight: imageElement.naturalHeight,
                   scale: slide.crop.scale,
+                  rotation: slide.crop.rotation,
                 },
                 unclampedOffset,
               )
@@ -1508,6 +1666,7 @@ export function App() {
                 imageWidth: imageElement.naturalWidth,
                 imageHeight: imageElement.naturalHeight,
                 scale: nextCropState.scale,
+                rotation: nextCropState.rotation,
               },
               { x: nextCropState.x, y: nextCropState.y },
             )
@@ -1529,7 +1688,16 @@ export function App() {
     commitProjectChange((currentProject) => setSlideCrop(currentProject, selectedSlide.id, { ...defaultCrop }));
   }
 
+  function rotateSelectedCrop(direction: -1 | 1) {
+    if (!selectedSlide) {
+      return;
+    }
+
+    commitProjectChange((currentProject) => rotateSlideCrop(currentProject, selectedSlide.id, direction));
+  }
+
   function deleteSelectedCanvasItems() {
+    const selectedCanvasItemIds = getSelectedCanvasItemIds();
     if (selectedCanvasItemIds.length === 0) {
       return;
     }
@@ -1547,6 +1715,24 @@ export function App() {
     const nextProject = removePostFromGridSlot(project, selectedGridSlotIndex);
     commitProjectChange(nextProject);
     setSelectedGridSlotIndex(null);
+    setCarouselEditorPostId(null);
+    setSelectedCarouselSlideId(null);
+    setCropEditSlotIndex(null);
+    setSelectedSlotSize(null);
+  }
+
+  function clearGridSlots() {
+    if (
+      !window.confirm(
+        "Clear unlocked slots in the active grid? Locked posts and source canvas images will stay available.",
+      )
+    ) {
+      return;
+    }
+
+    commitProjectChange((currentProject) => clearActiveGrid(currentProject));
+    setSelectedGridSlotIndex(null);
+    setSelectedGridSpanIndexes([]);
     setCarouselEditorPostId(null);
     setSelectedCarouselSlideId(null);
     setCropEditSlotIndex(null);
@@ -1969,19 +2155,13 @@ export function App() {
         );
         const slot = slotElement ? getUnscaledElementSize(slotElement) : fallbackQualitySlotSize;
         const image = await loadImageFromUrl(previewUrl);
-        const sourceRect = getSourceCropRect(asset, slide.crop, slot);
-
-        context.drawImage(
+        drawCroppedImageOnCanvas(context, {
           image,
-          sourceRect.sx,
-          sourceRect.sy,
-          sourceRect.sw,
-          sourceRect.sh,
-          dx,
-          dy,
-          columnWidth,
-          cellHeight,
-        );
+          asset,
+          crop: slide.crop,
+          slot,
+          target: { x: dx, y: dy, width: columnWidth, height: cellHeight },
+        });
       }
 
       const blob = await canvasToPngBlob(canvas);
@@ -2065,71 +2245,135 @@ export function App() {
 
         <div className="toolbar" data-tour="project-bar" aria-label="Project actions">
           <div className="toolbar-group" data-tour="history-theme">
-          <button className="icon-button" aria-label="Undo" title="Undo" disabled={!canUndo} onClick={undoProjectChange}>
-            <Undo2 size={17} />
-          </button>
-          <button className="icon-button" aria-label="Redo" title="Redo" disabled={!canRedo} onClick={redoProjectChange}>
-            <Redo2 size={17} />
-          </button>
-          <button
-            className="icon-button"
-            aria-label={isDark ? "Switch to light theme" : "Switch to dark theme"}
-            title={isDark ? "Switch to light theme" : "Switch to dark theme"}
-            onClick={() => setTheme(isDark ? "light" : "dark")}
-          >
-            {isDark ? <Sun size={17} /> : <Moon size={17} />}
-          </button>
+            <button className="icon-button" aria-label="Undo" title="Undo" disabled={!canUndo} onClick={undoProjectChange}>
+              <Undo2 size={17} />
+            </button>
+            <button className="icon-button" aria-label="Redo" title="Redo" disabled={!canRedo} onClick={redoProjectChange}>
+              <Redo2 size={17} />
+            </button>
           </div>
-          <button className="icon-button" aria-label="Open feature tour" title="Open feature tour" onClick={openFeatureTour}>
+          <span className="toolbar-divider" aria-hidden="true" />
+          <div className="menu-control" ref={projectMenuRef}>
+            <button
+              className="button secondary"
+              data-tour="project-menu"
+              aria-expanded={projectMenuOpen}
+              aria-haspopup="menu"
+              onClick={() => {
+                setProjectMenuOpen((current) => !current);
+                setExportMenuOpen(false);
+              }}
+            >
+              Project
+              <ChevronDown size={15} />
+            </button>
+            {projectMenuOpen ? (
+              <div className="action-menu" role="menu" aria-label="Project menu">
+                <button
+                  role="menuitem"
+                  onClick={() => {
+                    setProjectMenuOpen(false);
+                    void saveProjectPackageFile();
+                  }}
+                >
+                  <Save size={16} />
+                  <span>Save project</span>
+                </button>
+                <button
+                  role="menuitem"
+                  onClick={() => {
+                    setProjectMenuOpen(false);
+                    packageInputRef.current?.click();
+                  }}
+                >
+                  <FolderOpen size={16} />
+                  <span>Open project</span>
+                </button>
+                <button
+                  role="menuitem"
+                  onClick={() => {
+                    setProjectMenuOpen(false);
+                    duplicateCurrentGridVersion();
+                  }}
+                >
+                  <Copy size={16} />
+                  <span>Duplicate version</span>
+                </button>
+                <button
+                  role="menuitem"
+                  onClick={() => {
+                    setProjectMenuOpen(false);
+                    openFeatureTour();
+                  }}
+                >
+                  <HelpCircle size={16} />
+                  <span>Quick tour</span>
+                </button>
+                <button
+                  role="menuitem"
+                  onClick={() => {
+                    setProjectMenuOpen(false);
+                    setTheme(isDark ? "light" : "dark");
+                  }}
+                >
+                  {isDark ? <Sun size={16} /> : <Moon size={16} />}
+                  <span>{isDark ? "Light theme" : "Dark theme"}</span>
+                </button>
+              </div>
+            ) : null}
+          </div>
+          <button className="icon-button" data-tour="tour" aria-label="Open quick tour" title="Open quick tour" onClick={openFeatureTour}>
             <HelpCircle size={17} />
           </button>
-          <div className="segmented" aria-label="Aspect ratio" data-tour="aspect">
-            {aspectModes.map((mode) => (
-              <button
-                className={activeAspectRatio === mode ? "is-active" : ""}
-                key={mode}
-                onClick={() => changeAspectRatio(mode)}
-              >
-                {mode}
-              </button>
-            ))}
+          <span className="toolbar-divider" aria-hidden="true" />
+          <div className="toolbar-group toolbar-group-tight">
+            <div className="segmented" aria-label="Aspect ratio" data-tour="aspect">
+              {aspectModes.map((mode) => (
+                <button
+                  className={activeAspectRatio === mode ? "is-active" : ""}
+                  key={mode}
+                  onClick={() => changeAspectRatio(mode)}
+                >
+                  {mode}
+                </button>
+              ))}
+            </div>
+            <div className="segmented" data-tour="export-format" aria-label="Export format">
+              {exportFormats.map((format) => (
+                <button
+                  className={exportFormat === format ? "is-active" : ""}
+                  key={format}
+                  onClick={() => setExportFormat(format)}
+                >
+                  {format.toUpperCase()}
+                </button>
+              ))}
+            </div>
           </div>
-          <div className="segmented" data-tour="export-format" aria-label="Export format">
-            {exportFormats.map((format) => (
-              <button
-                className={exportFormat === format ? "is-active" : ""}
-                key={format}
-                onClick={() => setExportFormat(format)}
-              >
-                {format.toUpperCase()}
-              </button>
-            ))}
+          <span className="toolbar-divider" aria-hidden="true" />
+          <div className="version-control" data-tour="versions">
+            <select
+              className="version-select"
+              aria-label="Grid version"
+              value={project.activeVersionId}
+              onChange={(event) => switchGridVersion(event.target.value)}
+            >
+              {project.versions.map((version) => (
+                <option key={version.id} value={version.id}>
+                  {version.name}
+                </option>
+              ))}
+            </select>
+            <button
+              className="icon-button"
+              aria-label="Add draft version"
+              title="Add draft version"
+              onClick={duplicateCurrentGridVersion}
+            >
+              <Plus size={16} />
+            </button>
           </div>
-          <select
-            className="version-select"
-            aria-label="Grid version"
-            value={project.activeVersionId}
-            onChange={(event) => switchGridVersion(event.target.value)}
-          >
-            {project.versions.map((version) => (
-              <option key={version.id} value={version.id}>
-                {version.name}
-              </option>
-            ))}
-          </select>
-          <button className="icon-button" aria-label="Duplicate grid version" title="Duplicate grid version" onClick={duplicateCurrentGridVersion}>
-            <Copy size={16} />
-          </button>
-          <div className="toolbar-group" data-tour="project-files">
-          <button className="button secondary" onClick={() => void saveProjectPackageFile()}>
-            <Save size={16} />
-            Save
-          </button>
-          <button className="button secondary" onClick={() => packageInputRef.current?.click()}>
-            <FolderOpen size={16} />
-            Open
-          </button>
-          </div>
+          <span className="toolbar-divider" aria-hidden="true" />
           <input
             ref={packageInputRef}
             className="visually-hidden"
@@ -2149,18 +2393,46 @@ export function App() {
             multiple
             onChange={handleFileInput}
           />
-          <button className="button primary" data-tour="export" onClick={() => void exportSelectedPost()}>
-            <Download size={16} />
-            Export
-          </button>
-          <button className="button primary" data-tour="batch" onClick={() => void exportBatch()}>
-            <Files size={16} />
-            Batch
-          </button>
-          <button className="button secondary" data-tour="snapshot" onClick={() => void exportFeedSnapshot()}>
-            <ScanLine size={16} />
-            Snapshot
-          </button>
+          <div className="export-split" data-tour="export" ref={exportMenuRef}>
+            <button className="button primary export-main" onClick={() => void exportSelectedPost()}>
+              <Download size={16} />
+              Export
+            </button>
+            <button
+              className="icon-button primary export-toggle"
+              aria-expanded={exportMenuOpen}
+              aria-haspopup="menu"
+              aria-label="More export options"
+              title="More export options"
+              onClick={() => setExportMenuOpen((current) => !current)}
+            >
+              <ChevronDown size={16} />
+            </button>
+            {exportMenuOpen ? (
+              <div className="action-menu" role="menu" aria-label="Export options">
+                <button
+                  role="menuitem"
+                  onClick={() => {
+                    setExportMenuOpen(false);
+                    void exportBatch();
+                  }}
+                >
+                  <Files size={16} />
+                  <span>Batch render</span>
+                </button>
+                <button
+                  role="menuitem"
+                  onClick={() => {
+                    setExportMenuOpen(false);
+                    void exportFeedSnapshot();
+                  }}
+                >
+                  <ScanLine size={16} />
+                  <span>Feed snapshot</span>
+                </button>
+              </div>
+            ) : null}
+          </div>
         </div>
       </header>
 
@@ -2310,53 +2582,25 @@ export function App() {
               </span>
             </div>
             <div
+              ref={canvasLayerRef}
               className="canvas-layer"
+              onPointerDown={handleCanvasLayerPointerDown}
               style={{
-                transform: `translate(${canvasView.x}px, ${canvasView.y}px) scale(${canvasView.zoom})`,
+                transform: getCanvasLayerTransform(canvasView),
               }}
             >
-              {project.canvasItems.map((item) => {
-                const asset = sourceAssetById.get(item.sourceImageId);
-                const previewUrl = previewUrls[item.sourceImageId];
-                const width = asset ? Math.min(260, Math.max(150, asset.width / 9)) : 180;
-                const height = asset ? width * (asset.height / asset.width) : 225;
-
-                return (
-                  <article
-                    className={`canvas-item ${
-                      selectedCanvasItemIds.includes(item.id) ? "is-selected" : ""
-                    }`}
-                    key={item.id}
-                    data-canvas-item-id={item.id}
-                    onPointerDown={(event) => handleCanvasItemPointerDown(event, item.id)}
-                    style={{
-                      left: item.x,
-                      top: item.y,
-                      width,
-                      height: Math.min(300, Math.max(112, height)),
-                    }}
-                  >
-                    {previewUrl ? (
-                      <img src={previewUrl} alt={asset?.name ?? "Imported image"} />
-                    ) : (
-                      <div className="image-placeholder" />
-                    )}
-                    <span>{asset?.name ?? "Imported image"}</span>
-                  </article>
-                );
-              })}
-            </div>
-            {canvasSelectionRect ? (
-              <div
-                className="canvas-selection-rect"
-                style={{
-                  left: canvasSelectionRect.left,
-                  top: canvasSelectionRect.top,
-                  width: canvasSelectionRect.width,
-                  height: canvasSelectionRect.height,
-                }}
+              <CanvasItemList
+                items={project.canvasItems}
+                previewUrls={previewUrls}
+                sourceAssetById={sourceAssetById}
               />
-            ) : null}
+              <CanvasSelectionOverlay
+                items={project.canvasItems}
+                selectionStore={canvasSelectionStoreRef.current}
+                sourceAssetById={sourceAssetById}
+              />
+            </div>
+            <div ref={canvasSelectionRectRef} className="canvas-selection-rect" />
           </div>
           )}
         </section>
@@ -2404,6 +2648,10 @@ export function App() {
                   Clear
                 </button>
               ) : null}
+              <button className="button danger" data-tour="clear-grid" onClick={clearGridSlots}>
+                <Trash2 size={16} />
+                Clear grid
+              </button>
             </div>
           </div>
 
@@ -2479,6 +2727,12 @@ export function App() {
               <button className="button secondary" onClick={resetSelectedCrop}>
                 Reset
               </button>
+              <button className="icon-button" aria-label="Rotate image left" title="Rotate image left" onClick={() => rotateSelectedCrop(-1)}>
+                <RotateCcw size={16} />
+              </button>
+              <button className="icon-button" aria-label="Rotate image right" title="Rotate image right" onClick={() => rotateSelectedCrop(1)}>
+                <RotateCw size={16} />
+              </button>
               {selectedGridPost?.kind === "single" ? (
                 <button className="button secondary" data-tour="carousel" onClick={convertSelectedPostToCarousel}>
                   Carousel
@@ -2537,11 +2791,10 @@ export function App() {
                   : coverSlide;
               const coverAsset = displaySlide ? sourceAssetById.get(displaySlide.sourceImageId) : undefined;
               const coverPreview = displaySlide ? previewUrls[displaySlide.sourceImageId] : undefined;
-              const slotAspect = aspectToNumber(activeAspectRatio);
-              const coverClass =
-                coverAsset && coverAsset.width / coverAsset.height > slotAspect
-                  ? "cover-wide"
-                  : "cover-tall";
+              const coverImageStyle =
+                displaySlide && coverAsset
+                  ? getGridImageStyle(displaySlide.crop, coverAsset, activeAspectRatio)
+                  : undefined;
               const mosaicSelectionOrder = selectedGridSpanIndexes.indexOf(index);
 
               return (
@@ -2565,7 +2818,6 @@ export function App() {
                     <>
                       <div className="grid-image-frame">
                         <img
-                          className={coverClass}
                           src={coverPreview}
                           alt={coverAsset?.name ?? "Grid post"}
                           data-crop-x={displaySlide?.crop.x ?? 0}
@@ -2575,9 +2827,7 @@ export function App() {
                               ? (event) => handleGridImagePointerDown(event, index, displaySlide.id)
                               : undefined
                           }
-                          style={{
-                            transform: `translate(-50%, -50%) translate(${displaySlide?.crop.x ?? 0}px, ${displaySlide?.crop.y ?? 0}px) rotate(${displaySlide?.crop.rotation ?? 0}deg) scale(${displaySlide?.crop.scale ?? 1})`,
-                          }}
+                          style={coverImageStyle}
                         />
                       </div>
                       {post?.kind === "carousel" ? (
@@ -2637,6 +2887,124 @@ export function App() {
   );
 }
 
+type CanvasItemListProps = {
+  items: CanvasItem[];
+  previewUrls: Record<string, string>;
+  sourceAssetById: Map<string, SourceAsset>;
+};
+
+const CanvasItemList = memo(
+  function CanvasItemList({ items, previewUrls, sourceAssetById }: CanvasItemListProps) {
+    return (
+      <>
+        {items.map((item) => {
+          const asset = sourceAssetById.get(item.sourceImageId);
+          const previewUrl = previewUrls[item.sourceImageId];
+          const width = asset ? Math.min(260, Math.max(150, asset.width / 9)) : 180;
+          const height = asset ? width * (asset.height / asset.width) : 225;
+
+          return (
+            <article
+              className="canvas-item"
+              key={item.id}
+              data-canvas-item-id={item.id}
+              style={{
+                left: item.x,
+                top: item.y,
+                width,
+                height: Math.min(300, Math.max(112, height)),
+              }}
+            >
+              {previewUrl ? (
+                <img src={previewUrl} alt={asset?.name ?? "Imported image"} />
+              ) : (
+                <div className="image-placeholder" />
+              )}
+              <span>{asset?.name ?? "Imported image"}</span>
+            </article>
+          );
+        })}
+      </>
+    );
+  },
+  (previous, next) =>
+    previous.items === next.items &&
+    previous.previewUrls === next.previewUrls &&
+    previous.sourceAssetById === next.sourceAssetById,
+);
+
+type CanvasSelectionOverlayProps = {
+  items: CanvasItem[];
+  selectionStore: CanvasSelectionStore;
+  sourceAssetById: Map<string, SourceAsset>;
+};
+
+const CanvasSelectionOverlay = memo(function CanvasSelectionOverlay({
+  items,
+  selectionStore,
+  sourceAssetById,
+}: CanvasSelectionOverlayProps) {
+  const selectedIds = useSyncExternalStore(
+    selectionStore.subscribe,
+    selectionStore.getSnapshot,
+    selectionStore.getSnapshot,
+  );
+  const selectedRects = useMemo(() => {
+    if (selectedIds.length === 0) {
+      return [];
+    }
+
+    const canvasItemById = new Map(items.map((item) => [item.id, item]));
+    return selectedIds.flatMap((canvasItemId) => {
+      const item = canvasItemById.get(canvasItemId);
+      if (!item) {
+        return [];
+      }
+
+      return [{ id: item.id, rect: getCanvasItemRect(item, sourceAssetById.get(item.sourceImageId)) }];
+    });
+  }, [items, selectedIds, sourceAssetById]);
+
+  return (
+    <>
+      {selectedRects.map(({ id, rect }) => (
+        <div
+          className="canvas-item-selection-outline"
+          key={`selection-${id}`}
+          style={{
+            left: rect.left,
+            top: rect.top,
+            width: rect.width,
+            height: rect.height,
+          }}
+        />
+      ))}
+    </>
+  );
+});
+
+function createCanvasSelectionStore(): CanvasSelectionStore {
+  let selectedIds: string[] = [];
+  const listeners = new Set<() => void>();
+
+  return {
+    getSnapshot: () => selectedIds,
+    setSelection: (nextIds) => {
+      if (areStringArraysEqual(selectedIds, nextIds)) {
+        return false;
+      }
+
+      selectedIds = nextIds;
+      listeners.forEach((listener) => listener());
+      return true;
+    },
+    subscribe: (listener) => {
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    },
+  };
+}
+
 async function readImageDimensions(file: File): Promise<{ width: number; height: number }> {
   if ("createImageBitmap" in window) {
     try {
@@ -2692,17 +3060,41 @@ function screenRectToCanvasWorldRect(
   };
 }
 
-function getCanvasItemsInRect(
-  items: CanvasItem[],
-  sourceAssetById: Map<string, SourceAsset>,
+function getCanvasLayerTransform(canvasView: { x: number; y: number; zoom: number }): string {
+  return `translate(${canvasView.x}px, ${canvasView.y}px) scale(${canvasView.zoom})`;
+}
+
+function applyCanvasSelectionRectStyle(element: HTMLElement | null, rect: CanvasSelectionRect) {
+  if (!element) {
+    return;
+  }
+
+  element.style.display = "block";
+  element.style.left = `${rect.left}px`;
+  element.style.top = `${rect.top}px`;
+  element.style.width = `${rect.width}px`;
+  element.style.height = `${rect.height}px`;
+}
+
+function hideCanvasSelectionRect(element: HTMLElement | null) {
+  if (!element) {
+    return;
+  }
+
+  element.style.display = "none";
+}
+
+function getCanvasItemIdsInRect(
+  itemRects: Array<{ id: string; rect: CanvasSelectionRect }>,
   rect: CanvasSelectionRect,
 ): string[] {
-  return items
-    .filter((item) => {
-      const itemRect = getCanvasItemRect(item, sourceAssetById.get(item.sourceImageId));
-      return rectanglesIntersect(rect, itemRect);
-    })
-    .map((item) => item.id);
+  return itemRects
+    .filter((itemRect) => rectanglesIntersect(rect, itemRect.rect))
+    .map((itemRect) => itemRect.id);
+}
+
+function areStringArraysEqual(first: string[], second: string[]): boolean {
+  return first.length === second.length && first.every((value, index) => value === second[index]);
 }
 
 function getCanvasItemRect(
@@ -2764,6 +3156,28 @@ function clamp(value: number, min: number, max: number): number {
 function aspectToNumber(aspectRatio: AspectRatio): number {
   const [width, height] = aspectRatio.split(":").map(Number);
   return width / height;
+}
+
+function getGridImageStyle(crop: Slide["crop"], asset: SourceAsset, aspectRatio: AspectRatio): CSSProperties {
+  const slotWidth = aspectToNumber(aspectRatio);
+  const slotHeight = 1;
+  const rotation = normalizeRotation(crop.rotation);
+  const rotated = rotation % 180 === 90;
+  const coverWidth = rotated ? asset.height : asset.width;
+  const coverHeight = rotated ? asset.width : asset.height;
+  const coverScale = Math.max(slotWidth / coverWidth, slotHeight / coverHeight);
+  const imageWidthPercent = (asset.width * coverScale * 100) / slotWidth;
+  const imageHeightPercent = (asset.height * coverScale * 100) / slotHeight;
+
+  return {
+    width: `${imageWidthPercent}%`,
+    height: `${imageHeightPercent}%`,
+    transform: `translate(-50%, -50%) translate(${crop.x}px, ${crop.y}px) rotate(${rotation}deg) scale(${crop.scale})`,
+  };
+}
+
+function normalizeRotation(rotation: number): number {
+  return ((rotation % 360) + 360) % 360;
 }
 
 function getAutosaveStatusLabel(status: AutosaveStatus): string {

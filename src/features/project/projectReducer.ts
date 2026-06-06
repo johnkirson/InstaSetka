@@ -357,12 +357,70 @@ export function removePostFromGridSlot(project: Project, index: number): Project
   };
 }
 
+export function clearActiveGrid(project: Project): Project {
+  const activeVersion = getActiveVersion(project);
+  const lockedPostIds = new Set(project.posts.filter((post) => post.locked).map((post) => post.id));
+  const clearedSlotIndexes: number[] = [];
+  const postOrder = activeVersion.postOrder.map((postId, index) => {
+    if (postId && !lockedPostIds.has(postId)) {
+      clearedSlotIndexes.push(index);
+      return null;
+    }
+
+    return postId;
+  });
+  const nextProject = updateActiveVersion(project, {
+    ...activeVersion,
+    postOrder,
+  });
+  const referencedPostIds = new Set(
+    nextProject.versions.flatMap((version) => version.postOrder.filter(Boolean) as string[]),
+  );
+  const nextPosts = unlinkMosaicSlots(
+    nextProject.posts.filter((post) => referencedPostIds.has(post.id)),
+    clearedSlotIndexes,
+    new Set(postOrder.filter(Boolean) as string[]),
+  );
+  const referencedSourceImageIds = getReferencedSourceImageIds({
+    canvasItems: nextProject.canvasItems,
+    posts: nextPosts,
+  });
+
+  return {
+    ...nextProject,
+    posts: nextPosts,
+    assets: nextProject.assets.filter((asset) => referencedSourceImageIds.has(asset.id)),
+  };
+}
+
 export function setSlideCrop(project: Project, slideId: string, crop: CropState): Project {
   return {
     ...touch(project),
     posts: project.posts.map((post) => ({
       ...post,
       slides: post.slides.map((slide) => (slide.id === slideId ? { ...slide, crop } : slide)),
+    })),
+  };
+}
+
+export function rotateSlideCrop(project: Project, slideId: string, direction: -1 | 1): Project {
+  return {
+    ...touch(project),
+    posts: project.posts.map((post) => ({
+      ...post,
+      slides: post.slides.map((slide) =>
+        slide.id === slideId
+          ? {
+              ...slide,
+              crop: {
+                ...slide.crop,
+                x: 0,
+                y: 0,
+                rotation: normalizeRotation(slide.crop.rotation + direction * 90),
+              },
+            }
+          : slide,
+      ),
     })),
   };
 }
@@ -626,4 +684,8 @@ function touch(project: Project, updatedAt = new Date().toISOString()): Project 
 
 function createId(prefix: string): string {
   return `${prefix}_${crypto.randomUUID()}`;
+}
+
+function normalizeRotation(rotation: number): number {
+  return ((rotation % 360) + 360) % 360;
 }

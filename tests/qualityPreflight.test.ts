@@ -41,4 +41,32 @@ describe("getSlideQualityPreflight", () => {
     expect(Math.round(preflight.sourceCrop.sw)).toBe(1000);
     expect(Math.round(preflight.sourceCrop.sh)).toBe(1250);
   });
+
+  it("accounts for 90 degree rotation when estimating visible source pixels", () => {
+    const preflight = getSlideQualityPreflight({
+      asset: { width: 3000, height: 2000 },
+      crop: { aspectRatio: "4:5", x: 0, y: 0, scale: 1, rotation: 90 },
+      slot: { width: 400, height: 500 },
+      aspectRatio: "4:5",
+    });
+
+    expect(preflight.status).toBe("good");
+    expect(Math.round(preflight.sourceCrop.sw)).toBe(2500);
+    expect(Math.round(preflight.sourceCrop.sh)).toBe(2000);
+  });
+
+  it("accounts for crop pan after rotation when estimating visible source pixels", () => {
+    const preflight = getSlideQualityPreflight({
+      asset: { width: 3000, height: 2000 },
+      crop: { aspectRatio: "4:5", x: 100, y: 80, scale: 2, rotation: 90 },
+      slot: { width: 400, height: 500 },
+      aspectRatio: "4:5",
+    });
+
+    expect(preflight.status).toBe("warning");
+    expect(Math.round(preflight.sourceCrop.sx)).toBe(675);
+    expect(Math.round(preflight.sourceCrop.sy)).toBe(750);
+    expect(Math.round(preflight.sourceCrop.sw)).toBe(1250);
+    expect(Math.round(preflight.sourceCrop.sh)).toBe(1000);
+  });
 });

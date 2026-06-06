@@ -3,6 +3,7 @@ import {
   addSlideToPost,
   addSourceAsset,
   autoArrangeCanvasItems,
+  clearActiveGrid,
   convertPostToCarousel,
   createEmptyProject,
   duplicateActiveGridVersion,
@@ -18,6 +19,7 @@ import {
   replaceAssetInGridSlot,
   replacePostSlides,
   reorderActiveGrid,
+  rotateSlideCrop,
   setActiveGridVersion,
   setCanvasItemPosition,
   setSlideCrop,
@@ -206,6 +208,64 @@ describe("projectReducer", () => {
     expect(removed.assets).toHaveLength(0);
   });
 
+  it("clears the active grid while keeping canvas assets available", () => {
+    const project = createEmptyProject("2026-05-31T00:00:00.000Z");
+    const withAsset = addSourceAsset(project, asset("asset-a"), canvasItem("canvas-a", "asset-a"));
+    const withFirstPost = insertAssetIntoGrid(withAsset, "asset-a", 0);
+    const withSecondPost = insertAssetIntoGrid(withFirstPost, "asset-b", 2);
+    const cleared = clearActiveGrid(withSecondPost);
+
+    expect(cleared.versions[0].postOrder).toEqual([null, null, null]);
+    expect(cleared.posts).toHaveLength(0);
+    expect(cleared.canvasItems.map((item) => item.sourceImageId)).toEqual(["asset-a"]);
+    expect(cleared.assets.map((sourceAsset) => sourceAsset.id)).toEqual(["asset-a"]);
+  });
+
+  it("keeps locked posts in place when clearing the active grid", () => {
+    const project = createEmptyProject("2026-05-31T00:00:00.000Z");
+    const withFirstPost = insertAssetIntoGrid(project, "asset-a", 0);
+    const withSecondPost = insertAssetIntoGrid(withFirstPost, "asset-b", 1);
+    const locked = togglePostLock(withSecondPost, withSecondPost.posts[1].id);
+    const cleared = clearActiveGrid(locked);
+
+    expect(cleared.versions[0].postOrder).toEqual([null, "post_post-b"]);
+    expect(cleared.posts.map((post) => post.id)).toEqual(["post_post-b"]);
+    expect(cleared.posts[0].locked).toBe(true);
+  });
+
+  it("unlinks locked mosaic posts from cleared mosaic slots", () => {
+    const project = createEmptyProject("2026-05-31T00:00:00.000Z");
+    const withMosaic = insertAssetAcrossGridSlots(
+      project,
+      "asset-a",
+      [0, 1, 2],
+      [
+        { aspectRatio: "4:5", x: 100, y: 0, scale: 1, rotation: 0 },
+        { aspectRatio: "4:5", x: 0, y: 0, scale: 1, rotation: 0 },
+        { aspectRatio: "4:5", x: -100, y: 0, scale: 1, rotation: 0 },
+      ],
+    );
+    const lockedPostId = withMosaic.posts[1].id;
+    const locked = togglePostLock(withMosaic, lockedPostId);
+    const cleared = clearActiveGrid(locked);
+    const remainingPost = cleared.posts.find((post) => post.id === lockedPostId);
+
+    expect(cleared.versions[0].postOrder).toEqual([null, lockedPostId, null]);
+    expect(remainingPost?.locked).toBe(true);
+    expect(remainingPost?.mosaicGroup).toBeUndefined();
+  });
+
+  it("keeps posts that are still referenced by another grid version when clearing", () => {
+    const project = createEmptyProject("2026-05-31T00:00:00.000Z");
+    const withPost = insertAssetIntoGrid(project, "asset-a", 0);
+    const duplicated = duplicateActiveGridVersion(withPost, "Draft B", "2026-05-31T00:01:00.000Z");
+    const cleared = clearActiveGrid(duplicated);
+
+    expect(cleared.versions.find((version) => version.id === cleared.activeVersionId)?.postOrder).toEqual([null]);
+    expect(cleared.versions.find((version) => version.id === "version_default")?.postOrder).toEqual(["post_post-a"]);
+    expect(cleared.posts.map((post) => post.id)).toEqual(["post_post-a"]);
+  });
+
   it("reorders posts without mutating post records", () => {
     const project = createEmptyProject("2026-05-31T00:00:00.000Z");
     const withFirstPost = insertAssetIntoGrid(project, "asset-a", 0);
@@ -233,6 +293,30 @@ describe("projectReducer", () => {
       scale: 1.4,
     });
     expect(withPost.posts[0].slides[0].crop.aspectRatio).toBe("4:5");
+  });
+
+  it("rotates slide crops in 90 degree steps without mutating the original project", () => {
+    const project = createEmptyProject("2026-05-31T00:00:00.000Z");
+    const withPost = insertAssetIntoGrid(project, "asset-a", 0);
+    const slideId = withPost.posts[0].slides[0].id;
+    const cropped = setSlideCrop(withPost, slideId, {
+      aspectRatio: "4:5",
+      x: 42,
+      y: -18,
+      scale: 1.4,
+      rotation: 270,
+    });
+    const rotatedRight = rotateSlideCrop(cropped, slideId, 1);
+    const rotatedLeft = rotateSlideCrop(rotatedRight, slideId, -1);
+
+    expect(rotatedRight.posts[0].slides[0].crop).toMatchObject({
+      x: 0,
+      y: 0,
+      scale: 1.4,
+      rotation: 0,
+    });
+    expect(rotatedLeft.posts[0].slides[0].crop.rotation).toBe(270);
+    expect(cropped.posts[0].slides[0].crop).toMatchObject({ x: 42, y: -18, rotation: 270 });
   });
 
   it("converts a post to carousel and adds slides", () => {

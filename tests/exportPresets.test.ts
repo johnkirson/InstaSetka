@@ -57,4 +57,17 @@ describe("export presets", () => {
       ),
     ).toEqual({ sx: 900, sy: 250, sw: 400, sh: 500 });
   });
+
+  it("accounts for pan and zoom after 90 degree rotation", () => {
+    const rect = getSourceCropRect(
+      { width: 3000, height: 2000 },
+      { aspectRatio: "4:5", x: 100, y: 80, scale: 2, rotation: 90 },
+      { width: 400, height: 500 },
+    );
+
+    expect(Math.round(rect.sx)).toBe(675);
+    expect(Math.round(rect.sy)).toBe(750);
+    expect(Math.round(rect.sw)).toBe(1250);
+    expect(Math.round(rect.sh)).toBe(1000);
+  });
 });
