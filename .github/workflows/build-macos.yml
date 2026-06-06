@@ -26,6 +26,8 @@ jobs:
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
 
       - name: Install frontend dependencies
         run: npm ci
@@ -33,25 +35,25 @@ jobs:
       - name: Run tests
         run: npm run test
 
-      - name: Build unsigned macOS bundle
-        run: npm run tauri -- build --bundles app,dmg
+      - name: Build ad-hoc signed universal macOS bundle
+        run: npm run tauri -- build --target universal-apple-darwin --bundles app,dmg
 
       - name: Package macOS artifacts
         run: |
           mkdir -p macos-artifacts
-          APP_PATH="$(find src-tauri/target/release/bundle/macos -maxdepth 1 -name '*.app' -type d | head -n 1)"
+          APP_PATH="$(find src-tauri/target/universal-apple-darwin/release/bundle/macos -maxdepth 1 -name '*.app' -type d | head -n 1)"
           if [ -z "$APP_PATH" ]; then
             echo "No .app bundle found"
             exit 1
           fi
           chmod +x "$APP_PATH/Contents/MacOS/"*
-          ditto -c -k --keepParent "$APP_PATH" macos-artifacts/InstaSetka-macos-unsigned.app.zip
-          cp src-tauri/target/release/bundle/dmg/*.dmg macos-artifacts/
+          ditto -c -k --keepParent "$APP_PATH" macos-artifacts/InstaSetka-macos-universal.app.zip
+          cp src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg macos-artifacts/
 
       - name: Upload macOS app artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: InstaSetka-macos-unsigned
+          name: InstaSetka-macos-universal-adhoc
           path: macos-artifacts/*
           if-no-files-found: error
           retention-days: 14
