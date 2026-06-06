@@ -2,6 +2,9 @@ name: Build macOS app
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - codex/macos-build-workflow
 
 permissions:
   contents: read
