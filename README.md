@@ -36,6 +36,12 @@ npm run tauri build
 
 Build artifacts are generated under `src-tauri/target/release/` and are intentionally ignored by Git.
 
+## Experimental macOS build
+
+Unsigned macOS builds are generated through the manual `Build macOS app` GitHub Actions workflow. Download the `InstaSetka-macos-unsigned` artifact from a successful workflow run and test it on a Mac.
+
+Because the first macOS build is not signed or notarized yet, macOS Gatekeeper may require opening it through right click -> Open or System Settings -> Privacy & Security -> Open Anyway.
+
 ## License
 
 InstaSetka is source-available for personal and non-commercial use under the PolyForm Noncommercial License 1.0.0.
