@@ -551,6 +551,37 @@ export function duplicateActiveGridVersion(project: Project, name: string, now =
   };
 }
 
+export function deleteGridVersion(project: Project, versionId: string, now = new Date().toISOString()): Project {
+  if (project.versions.length <= 1) {
+    return project;
+  }
+
+  const versionIndex = project.versions.findIndex((version) => version.id === versionId);
+
+  if (versionIndex < 0) {
+    return project;
+  }
+
+  const nextVersions = project.versions.filter((version) => version.id !== versionId);
+  const fallbackVersion = nextVersions[Math.max(0, versionIndex - 1)] ?? nextVersions[0];
+  const referencedPostIds = new Set(
+    nextVersions.flatMap((version) => version.postOrder.filter(Boolean) as string[]),
+  );
+  const nextPosts = project.posts.filter((post) => referencedPostIds.has(post.id));
+  const referencedSourceImageIds = getReferencedSourceImageIds({
+    canvasItems: project.canvasItems,
+    posts: nextPosts,
+  });
+
+  return {
+    ...touch(project, now),
+    activeVersionId: project.activeVersionId === versionId ? fallbackVersion.id : project.activeVersionId,
+    versions: nextVersions,
+    posts: nextPosts,
+    assets: project.assets.filter((asset) => referencedSourceImageIds.has(asset.id)),
+  };
+}
+
 export function setActiveGridVersion(project: Project, versionId: string): Project {
   if (project.activeVersionId === versionId) {
     return project;

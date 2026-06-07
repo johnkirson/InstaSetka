@@ -9,6 +9,7 @@ import {
   ImagePlus,
   Lock,
   HelpCircle,
+  Minus,
   Moon,
   PanelLeft,
   Plus,
@@ -52,6 +53,7 @@ import {
   clearActiveGrid,
   convertPostToCarousel,
   createEmptyProject,
+  deleteGridVersion,
   defaultCrop,
   duplicateActiveGridVersion,
   duplicateSlideInPost,
@@ -1855,6 +1857,26 @@ export function App() {
     setCropEditSlotIndex(null);
   }
 
+  function deleteCurrentGridVersion() {
+    const activeVersion = project.versions.find((version) => version.id === project.activeVersionId);
+
+    if (!activeVersion || project.versions.length <= 1) {
+      return;
+    }
+
+    const confirmed = window.confirm(`Delete "${activeVersion.name}"? This cannot be undone.`);
+
+    if (!confirmed) {
+      return;
+    }
+
+    commitProjectChange((currentProject) => deleteGridVersion(currentProject, currentProject.activeVersionId));
+    setSelectedGridSlotIndex(null);
+    setSelectedCarouselSlideId(null);
+    setCarouselEditorPostId(null);
+    setCropEditSlotIndex(null);
+  }
+
   function switchGridVersion(versionId: string) {
     commitProjectChange((currentProject) => setActiveGridVersion(currentProject, versionId));
     setSelectedGridSlotIndex(null);
@@ -2329,6 +2351,19 @@ export function App() {
               onClick={duplicateCurrentGridVersion}
             >
               <Plus size={16} />
+            </button>
+            <button
+              className="icon-button"
+              aria-label="Delete current draft version"
+              title={
+                project.versions.length <= 1
+                  ? "Keep at least one draft version"
+                  : "Delete current draft version"
+              }
+              disabled={project.versions.length <= 1}
+              onClick={deleteCurrentGridVersion}
+            >
+              <Minus size={16} />
             </button>
           </div>
           <span className="toolbar-divider" aria-hidden="true" />
