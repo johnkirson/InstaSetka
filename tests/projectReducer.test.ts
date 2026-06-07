@@ -6,6 +6,7 @@ import {
   clearActiveGrid,
   convertPostToCarousel,
   createEmptyProject,
+  deleteGridVersion,
   duplicateActiveGridVersion,
   duplicateSlideInPost,
   insertAssetAcrossGridSlots,
@@ -384,6 +385,30 @@ describe("projectReducer", () => {
     const switched = setActiveGridVersion(duplicated, "version_default");
 
     expect(switched.activeVersionId).toBe("version_default");
+  });
+
+  it("deletes the active grid version and switches to the previous draft", () => {
+    const project = createEmptyProject("2026-05-31T00:00:00.000Z");
+    const withFirstPost = insertAssetIntoGrid(project, "asset-a", 0);
+    const draftB = duplicateActiveGridVersion(withFirstPost, "Draft B", "2026-05-31T00:01:00.000Z");
+    const withSecondPost = insertAssetIntoGrid(draftB, "asset-b", 1);
+    const deleted = deleteGridVersion(withSecondPost, withSecondPost.activeVersionId, "2026-05-31T00:02:00.000Z");
+
+    expect(deleted.versions).toHaveLength(1);
+    expect(deleted.activeVersionId).toBe("version_default");
+    expect(deleted.versions[0].postOrder).toEqual(["post_post-a"]);
+    expect(deleted.posts.map((post) => post.id)).toEqual(["post_post-a"]);
+  });
+
+  it("keeps the last grid version and canvas assets when deleting drafts", () => {
+    const project = createEmptyProject("2026-05-31T00:00:00.000Z");
+    const withAsset = addSourceAsset(project, asset("asset-a"), canvasItem("canvas-a", "asset-a"));
+    const deleted = deleteGridVersion(withAsset, "version_default", "2026-05-31T00:01:00.000Z");
+
+    expect(deleted).toBe(withAsset);
+    expect(deleted.versions).toHaveLength(1);
+    expect(deleted.canvasItems).toHaveLength(1);
+    expect(deleted.assets.map((sourceAsset) => sourceAsset.id)).toEqual(["asset-a"]);
   });
 
   it("prevents moving, replacing, or deleting locked posts", () => {
