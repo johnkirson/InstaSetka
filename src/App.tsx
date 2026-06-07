@@ -2070,11 +2070,12 @@ export function App() {
       setExportStatus("Rendering feed snapshot...");
       const rows = Math.ceil((lastFilledSlotIndex + 1) / 3);
       const snapshotWidth = 1080;
-      const columnWidth = snapshotWidth / 3;
+      const snapshotGap = 2;
+      const columnWidth = (snapshotWidth - snapshotGap * 2) / 3;
       const cellHeight = Math.round(columnWidth / aspectToNumber(activeAspectRatio));
       const canvas = document.createElement("canvas");
       canvas.width = snapshotWidth;
-      canvas.height = rows * cellHeight;
+      canvas.height = rows * cellHeight + Math.max(0, rows - 1) * snapshotGap;
       const context = canvas.getContext("2d");
 
       if (!context) {
@@ -2091,8 +2092,8 @@ export function App() {
         const slide = post?.slides[0];
         const column = slotIndex % 3;
         const row = Math.floor(slotIndex / 3);
-        const dx = column * columnWidth;
-        const dy = row * cellHeight;
+        const dx = column * (columnWidth + snapshotGap);
+        const dy = row * (cellHeight + snapshotGap);
 
         if (!slide) {
           context.fillStyle = theme === "dark" ? "#181916" : "#ffffff";
