@@ -3216,12 +3216,17 @@ function isEditableEventTarget(target: EventTarget | null): boolean {
 }
 
 async function loadImageFromUrl(url: string): Promise<HTMLImageElement> {
-  const image = new Image();
-  image.decoding = "async";
-  image.src = url;
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.decoding = "async";
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error("The source image cannot be decoded."));
+    image.src = url;
 
-  await image.decode();
-  return image;
+    if (image.complete && image.naturalWidth > 0) {
+      resolve(image);
+    }
+  });
 }
 
 async function selectBatchRenderDirectory(): Promise<WritableDirectoryHandle | null> {
