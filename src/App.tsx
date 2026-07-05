@@ -2040,7 +2040,7 @@ export function App() {
     slideId: string,
     fromIndex: number,
   ) {
-    if ((event.target as HTMLElement).closest("button")) {
+    if ((event.target as HTMLElement).closest("[data-carousel-slide-action]")) {
       return;
     }
 
@@ -2721,6 +2721,7 @@ export function App() {
                 {selectedCarouselPost?.slides.map((slide, index) => {
                   const asset = sourceAssetById.get(slide.sourceImageId);
                   const previewUrl = previewUrls[slide.sourceImageId];
+                  const slideLabel = `Slide ${index + 1}: ${asset?.name ?? "Missing source"}`;
 
                   return (
                     <article
@@ -2729,26 +2730,34 @@ export function App() {
                       } ${draggingCarouselSlideIndex === index ? "is-dragging" : ""
                       }`}
                       key={slide.id}
+                      aria-label={slideLabel}
+                      aria-selected={selectedSlide?.id === slide.id}
                       data-carousel-slide-index={index}
+                      role="button"
+                      tabIndex={0}
                       onClick={() => setSelectedCarouselSlideId(slide.id)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" || event.key === " ") {
+                          event.preventDefault();
+                          setSelectedCarouselSlideId(slide.id);
+                        }
+                      }}
                       onPointerDown={(event) => handleCarouselSlidePointerDown(event, slide.id, index)}
+                      title={slideLabel}
                     >
                       {previewUrl ? <img src={previewUrl} alt={asset?.name ?? "Carousel slide"} /> : <div className="image-placeholder" />}
-                      <div>
-                        <strong>Slide {index + 1}</strong>
-                        <span>{asset?.name ?? "Missing source"}</span>
-                      </div>
+                      <span className="carousel-slide-number">{index + 1}</span>
                       <div className="carousel-slide-actions" onClick={(event) => event.stopPropagation()}>
-                        <button className="icon-button" aria-label={`Move slide ${index + 1} left`} disabled={index === 0} onClick={() => moveCarouselSlide(index, index - 1)}>
+                        <button data-carousel-slide-action className="icon-button" aria-label={`Move slide ${index + 1} left`} disabled={index === 0} onClick={() => moveCarouselSlide(index, index - 1)}>
                           -
                         </button>
-                        <button className="icon-button" aria-label={`Move slide ${index + 1} right`} disabled={index === (selectedCarouselPost?.slides.length ?? 1) - 1} onClick={() => moveCarouselSlide(index, index + 1)}>
+                        <button data-carousel-slide-action className="icon-button" aria-label={`Move slide ${index + 1} right`} disabled={index === (selectedCarouselPost?.slides.length ?? 1) - 1} onClick={() => moveCarouselSlide(index, index + 1)}>
                           +
                         </button>
-                        <button className="icon-button" aria-label={`Duplicate slide ${index + 1}`} onClick={() => duplicateCarouselSlide(slide.id)}>
+                        <button data-carousel-slide-action className="icon-button" aria-label={`Duplicate slide ${index + 1}`} onClick={() => duplicateCarouselSlide(slide.id)}>
                           <ImagePlus size={15} />
                         </button>
-                        <button className="icon-button" aria-label={`Remove slide ${index + 1}`} disabled={(selectedCarouselPost?.slides.length ?? 1) <= 1} onClick={() => removeCarouselSlide(slide.id)}>
+                        <button data-carousel-slide-action className="icon-button" aria-label={`Remove slide ${index + 1}`} disabled={(selectedCarouselPost?.slides.length ?? 1) <= 1} onClick={() => removeCarouselSlide(slide.id)}>
                           <Trash2 size={15} />
                         </button>
                       </div>

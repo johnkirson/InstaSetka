@@ -542,6 +542,15 @@ test("adds and edits a text layer in the carousel workspace", async ({ page }) =
 
   await page.getByRole("button", { name: "Carousel" }).click();
   await expect(page.getByRole("region", { name: "Carousel Workspace" })).toBeVisible();
+  const slideStrip = page.getByRole("region", { name: "Carousel slides" });
+  const slideStripBox = await slideStrip.boundingBox();
+  const firstSlideThumbnail = slideStrip.locator(".carousel-slide-card").first();
+  const firstSlideThumbnailBox = await firstSlideThumbnail.boundingBox();
+  if (!slideStripBox || !firstSlideThumbnailBox) {
+    throw new Error("Carousel slide strip layout boxes were not available");
+  }
+  expect(slideStripBox.height).toBeLessThanOrEqual(110);
+  expect(Math.abs(firstSlideThumbnailBox.width - firstSlideThumbnailBox.height)).toBeLessThan(2);
   await page.getByRole("button", { name: "Text", exact: true }).click();
 
   const textLayer = page.getByRole("button", { name: "Double-click to edit" });
