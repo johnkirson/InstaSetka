@@ -49,6 +49,7 @@ import { getSlideQualityPreflight, type SlideQualityPreflight } from "./features
 import {
   addSourceAsset,
   addSlideToPost,
+  addTextElementToSlide,
   autoArrangeCanvasItems,
   clearActiveGrid,
   convertPostToCarousel,
@@ -65,12 +66,14 @@ import {
   removeCanvasItems,
   removePostFromGridSlot,
   removeSlideFromPost,
+  removeSlideElement,
   replacePostSlides,
   rotateSlideCrop,
   setActiveGridVersion,
   setSlideCrop,
   setCanvasItemPosition,
   togglePostLock,
+  updateSlideElement,
 } from "./features/project/projectReducer";
 import {
   blobToDataUrl,
@@ -93,7 +96,7 @@ import {
   type SplitDirection,
 } from "./features/splitter/longImageSplitter";
 import { FeatureTour, type TourStep } from "./features/tour/FeatureTour";
-import type { CanvasItem, MosaicGroup, Project, Slide, SourceAsset } from "./lib/types";
+import type { CanvasItem, MosaicGroup, Project, Slide, SlideElement, SlideTextStyle, SourceAsset } from "./lib/types";
 import type { AspectRatio, ExportFormat } from "./lib/types";
 import type { SlotSize } from "./features/export/exportPresets";
 
@@ -366,6 +369,7 @@ export function App() {
   const [selectedGridSlotIndex, setSelectedGridSlotIndex] = useState<number | null>(null);
   const [selectedGridSpanIndexes, setSelectedGridSpanIndexes] = useState<number[]>([]);
   const [selectedCarouselSlideId, setSelectedCarouselSlideId] = useState<string | null>(null);
+  const [selectedSlideElementId, setSelectedSlideElementId] = useState<string | null>(null);
   const [carouselEditorPostId, setCarouselEditorPostId] = useState<string | null>(null);
   const [draggingGridSlotIndex, setDraggingGridSlotIndex] = useState<number | null>(null);
   const [draggingCarouselSlideIndex, setDraggingCarouselSlideIndex] = useState<number | null>(null);
@@ -427,6 +431,10 @@ export function App() {
     carouselMode && selectedCarouselPost && selectedSlide
       ? selectedCarouselPost.slides.findIndex((slide) => slide.id === selectedSlide.id)
       : 0;
+  const selectedSlideElement =
+    selectedSlide?.elements?.find((element) => element.id === selectedSlideElementId) ?? null;
+  const selectedSlideAsset = selectedSlide ? sourceAssetById.get(selectedSlide.sourceImageId) : undefined;
+  const selectedSlidePreviewUrl = selectedSlide ? previewUrls[selectedSlide.sourceImageId] : undefined;
   const canUndo = projectHistory.past.length > 0;
   const canRedo = projectHistory.future.length > 0;
   const selectedQuality = useMemo<SlideQualityPreflight | null>(() => {
@@ -686,6 +694,7 @@ export function App() {
   useEffect(() => {
     if (!carouselMode || !selectedCarouselPost) {
       setSelectedCarouselSlideId(null);
+      setSelectedSlideElementId(null);
       return;
     }
 
@@ -696,6 +705,12 @@ export function App() {
       setSelectedCarouselSlideId(selectedCarouselPost.slides[0]?.id ?? null);
     }
   }, [carouselMode, selectedCarouselPost, selectedCarouselSlideId]);
+
+  useEffect(() => {
+    if (!selectedSlide?.elements?.some((element) => element.id === selectedSlideElementId)) {
+      setSelectedSlideElementId(null);
+    }
+  }, [selectedSlide, selectedSlideElementId]);
 
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
@@ -1742,6 +1757,45 @@ export function App() {
     commitProjectChange((currentProject) => addSlideToPost(currentProject, selectedGridPost.id, sourceImageId));
   }
 
+  function addTextToSelectedSlide() {
+    if (!selectedSlide) {
+      return;
+    }
+
+    commitProjectChange((currentProject) => addTextElementToSlide(currentProject, selectedSlide.id));
+  }
+
+  function updateSelectedSlideElementContent(content: string) {
+    if (!selectedSlide || !selectedSlideElement) {
+      return;
+    }
+
+    commitProjectChange((currentProject) =>
+      updateSlideElement(currentProject, selectedSlide.id, selectedSlideElement.id, { content }),
+    );
+  }
+
+  function updateSelectedSlideElementStyle(style: Partial<SlideTextStyle>) {
+    if (!selectedSlide || !selectedSlideElement) {
+      return;
+    }
+
+    commitProjectChange((currentProject) =>
+      updateSlideElement(currentProject, selectedSlide.id, selectedSlideElement.id, { style }),
+    );
+  }
+
+  function deleteSelectedSlideElement() {
+    if (!selectedSlide || !selectedSlideElement) {
+      return;
+    }
+
+    commitProjectChange((currentProject) =>
+      removeSlideElement(currentProject, selectedSlide.id, selectedSlideElement.id),
+    );
+    setSelectedSlideElementId(null);
+  }
+
   function duplicateCarouselSlide(slideId: string) {
     if (!selectedGridPost) {
       return;
@@ -2179,6 +2233,7 @@ export function App() {
       slot: input.slot,
       aspectRatio: activeAspectRatio,
       format: exportFormat,
+      elements: input.slide.elements,
     });
     const filename = input.isCarousel
       ? createCarouselExportFilename(
@@ -2516,6 +2571,105 @@ export function App() {
                     </article>
                   );
                 })}
+              </section>
+              <section className="carousel-design-editor" aria-label="Carousel slide editor">
+                <div
+                  className="slide-design-canvas"
+                  data-active-aspect={activeAspectRatio}
+                  style={{ "--slide-aspect": cssAspectByMode[activeAspectRatio] } as CSSProperties}
+                  onClick={() => setSelectedSlideElementId(null)}
+                >
+                  {selectedSlidePreviewUrl && selectedSlideAsset && selectedSlide ? (
+                    <img
+                      className="slide-design-image"
+                      src={selectedSlidePreviewUrl}
+                      alt={selectedSlideAsset.name}
+                      style={getGridImageStyle(selectedSlide.crop, selectedSlideAsset, activeAspectRatio)}
+                    />
+                  ) : (
+                    <div className="image-placeholder" />
+                  )}
+                  {selectedSlide?.elements?.map((element) => (
+                    <button
+                      className={`slide-text-element ${
+                        selectedSlideElementId === element.id ? "is-selected" : ""
+                      }`}
+                      key={element.id}
+                      style={getSlideElementStyle(element)}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        setSelectedSlideElementId(element.id);
+                      }}
+                    >
+                      {element.content}
+                    </button>
+                  ))}
+                </div>
+                <aside className="slide-design-panel" aria-label="Text properties">
+                  <div className="slide-design-panel-header">
+                    <div>
+                      <p className="eyebrow">Design</p>
+                      <strong>{selectedSlideElement ? "Text layer" : "Slide tools"}</strong>
+                    </div>
+                    <button className="button secondary" onClick={addTextToSelectedSlide}>
+                      <Plus size={16} />
+                      Text
+                    </button>
+                  </div>
+                  {selectedSlideElement ? (
+                    <>
+                      <label className="design-field">
+                        Content
+                        <textarea
+                          aria-label="Text content"
+                          value={selectedSlideElement.content}
+                          onChange={(event) => updateSelectedSlideElementContent(event.target.value)}
+                        />
+                      </label>
+                      <div className="design-field-row">
+                        <label className="design-field">
+                          Size
+                          <input
+                            aria-label="Text size"
+                            min="28"
+                            max="120"
+                            type="number"
+                            value={selectedSlideElement.style.fontSize}
+                            onChange={(event) =>
+                              updateSelectedSlideElementStyle({ fontSize: Number(event.target.value) || 72 })
+                            }
+                          />
+                        </label>
+                        <label className="design-field">
+                          Color
+                          <input
+                            aria-label="Text color"
+                            type="color"
+                            value={selectedSlideElement.style.color}
+                            onChange={(event) => updateSelectedSlideElementStyle({ color: event.target.value })}
+                          />
+                        </label>
+                      </div>
+                      <div className="segmented compact" aria-label="Text align">
+                        {(["left", "center", "right"] as const).map((alignment) => (
+                          <button
+                            className={selectedSlideElement.style.textAlign === alignment ? "is-active" : ""}
+                            key={alignment}
+                            onClick={() => updateSelectedSlideElementStyle({ textAlign: alignment })}
+                          >
+                            {alignment[0].toUpperCase()}
+                          </button>
+                        ))}
+                      </div>
+                      <button className="button danger" onClick={deleteSelectedSlideElement}>
+                        <Trash2 size={16} />
+                        Remove text
+                      </button>
+                    </>
+                  ) : (
+                    <p className="design-empty">Add a text layer or select existing text on the slide.</p>
+                  )}
+                </aside>
               </section>
               <section className="carousel-assets" aria-label="Carousel source assets">
                 <div className="splitter-controls">
@@ -3177,6 +3331,21 @@ function getGridImageStyle(crop: Slide["crop"], asset: SourceAsset, aspectRatio:
     width: `${imageWidthPercent}%`,
     height: `${imageHeightPercent}%`,
     transform: `translate(-50%, -50%) translate(${crop.x}px, ${crop.y}px) rotate(${rotation}deg) scale(${crop.scale})`,
+  };
+}
+
+function getSlideElementStyle(element: SlideElement): CSSProperties {
+  return {
+    left: `${element.x * 100}%`,
+    top: `${element.y * 100}%`,
+    width: `${element.width * 100}%`,
+    minHeight: `${element.height * 100}%`,
+    color: element.style.color,
+    fontFamily: element.style.fontFamily,
+    fontSize: `clamp(12px, ${(element.style.fontSize / 1080) * 100}vw, ${element.style.fontSize}px)`,
+    fontWeight: element.style.fontWeight,
+    lineHeight: element.style.lineHeight,
+    textAlign: element.style.textAlign,
   };
 }
 

@@ -518,6 +518,41 @@ test("shows quality preflight for the selected grid post", async ({ page }) => {
   await expect(page.getByText(/source px for 1080 x 1350/)).toBeVisible();
 });
 
+test("adds and edits a text layer in the carousel workspace", async ({ page }) => {
+  await page.goto("/");
+
+  await page.locator('input[type="file"][multiple]').setInputFiles({
+    name: "carousel-text.png",
+    mimeType: "image/png",
+    buffer: wideImage,
+  });
+
+  const item = page.locator(".canvas-item").filter({ hasText: "carousel-text.png" });
+  const targetSlot = page.locator("[data-grid-slot-index='0']");
+  const itemBox = await item.boundingBox();
+  const slotBox = await targetSlot.boundingBox();
+  if (!itemBox || !slotBox) {
+    throw new Error("Required bounding boxes were not available");
+  }
+
+  await page.mouse.move(itemBox.x + itemBox.width / 2, itemBox.y + itemBox.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(slotBox.x + slotBox.width / 2, slotBox.y + slotBox.height / 2);
+  await page.mouse.up();
+
+  await page.getByRole("button", { name: "Carousel" }).click();
+  await expect(page.getByRole("region", { name: "Carousel Workspace" })).toBeVisible();
+  await page.getByRole("button", { name: "Text", exact: true }).click();
+
+  const textLayer = page.getByRole("button", { name: "Double-click to edit" });
+  await expect(textLayer).toBeVisible();
+  await textLayer.click();
+  await page.getByLabel("Text content").fill("Launch checklist");
+
+  await expect(page.getByRole("button", { name: "Launch checklist" })).toBeVisible();
+  await expect(page.getByLabel("Text properties")).toContainText("Text layer");
+});
+
 test("lists quality map issues and selects the affected grid slot", async ({ page }) => {
   await page.goto("/");
 

@@ -1,4 +1,4 @@
-import type { AspectRatio, CropState, ExportFormat, SourceAsset } from "../../lib/types";
+import type { AspectRatio, CropState, ExportFormat, SlideElement, SourceAsset } from "../../lib/types";
 import {
   getExportMimeType,
   getExportPreset,
@@ -12,6 +12,7 @@ export type RenderSlideExportInput = {
   slot: SlotSize;
   aspectRatio: AspectRatio;
   format: ExportFormat;
+  elements?: SlideElement[];
 };
 
 export async function renderSlideExport(input: RenderSlideExportInput): Promise<Blob> {
@@ -34,6 +35,10 @@ export async function renderSlideExport(input: RenderSlideExportInput): Promise<
     slot: input.slot,
     target: { x: 0, y: 0, width: preset.width, height: preset.height },
   });
+  drawSlideElementsOnCanvas(context, input.elements ?? [], {
+    width: preset.width,
+    height: preset.height,
+  });
 
   const mimeType = getExportMimeType(input.format);
   return new Promise((resolve, reject) => {
@@ -49,6 +54,61 @@ export async function renderSlideExport(input: RenderSlideExportInput): Promise<
       input.format === "jpeg" ? 0.95 : undefined,
     );
   });
+}
+
+export function drawSlideElementsOnCanvas(
+  context: CanvasRenderingContext2D,
+  elements: SlideElement[],
+  canvasSize: { width: number; height: number },
+) {
+  for (const element of elements) {
+    context.save();
+    context.fillStyle = element.style.color;
+    context.font = `${element.style.fontWeight} ${element.style.fontSize}px ${element.style.fontFamily}`;
+    context.textAlign = element.style.textAlign;
+    context.textBaseline = "top";
+
+    const x = element.x * canvasSize.width;
+    const y = element.y * canvasSize.height;
+    const width = element.width * canvasSize.width;
+    const lineHeight = element.style.fontSize * element.style.lineHeight;
+    const anchorX =
+      element.style.textAlign === "center"
+        ? x + width / 2
+        : element.style.textAlign === "right"
+          ? x + width
+          : x;
+
+    for (const [lineIndex, line] of wrapCanvasText(context, element.content, width).entries()) {
+      context.fillText(line, anchorX, y + lineIndex * lineHeight);
+    }
+
+    context.restore();
+  }
+}
+
+function wrapCanvasText(context: CanvasRenderingContext2D, text: string, maxWidth: number): string[] {
+  const explicitLines = text.split(/\r?\n/);
+  const lines: string[] = [];
+
+  for (const explicitLine of explicitLines) {
+    const words = explicitLine.split(/\s+/).filter(Boolean);
+    let line = "";
+
+    for (const word of words) {
+      const candidate = line ? `${line} ${word}` : word;
+      if (line && context.measureText(candidate).width > maxWidth) {
+        lines.push(line);
+        line = word;
+      } else {
+        line = candidate;
+      }
+    }
+
+    lines.push(line);
+  }
+
+  return lines.length > 0 ? lines : [""];
 }
 
 export function drawCroppedImageOnCanvas(

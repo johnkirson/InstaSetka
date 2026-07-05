@@ -6,8 +6,13 @@ import type {
   Project,
   Slide,
   SlideTextElement,
+  SlideTextStyle,
   SourceAsset,
 } from "../../lib/types";
+
+type SlideTextElementPatch = Partial<Omit<SlideTextElement, "style">> & {
+  style?: Partial<SlideTextStyle>;
+};
 
 export const defaultCrop: CropState = {
   aspectRatio: "4:5",
@@ -447,7 +452,7 @@ export function updateSlideElement(
   project: Project,
   slideId: string,
   elementId: string,
-  patch: Partial<SlideTextElement>,
+  patch: SlideTextElementPatch,
 ): Project {
   return {
     ...touch(project),

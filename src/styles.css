@@ -500,11 +500,12 @@ h2 {
   display: grid;
   min-height: 0;
   flex: 1 1 0;
-  grid-template-rows: minmax(180px, 0.58fr) minmax(130px, 0.42fr);
+  grid-template-rows: minmax(116px, auto) minmax(260px, 1fr) minmax(130px, 0.34fr);
   gap: 12px;
 }
 
 .carousel-slides,
+.carousel-design-editor,
 .carousel-assets {
   min-height: 0;
   overflow: auto;
@@ -546,6 +547,115 @@ h2 {
 
 .carousel-slide-card.is-dragging {
   opacity: 0.68;
+}
+
+.carousel-design-editor {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) minmax(210px, 0.44fr);
+  gap: 12px;
+  padding: 12px;
+}
+
+.slide-design-canvas {
+  position: relative;
+  display: grid;
+  align-self: center;
+  justify-self: center;
+  width: min(100%, 380px);
+  max-height: 100%;
+  overflow: hidden;
+  aspect-ratio: var(--slide-aspect, 4 / 5);
+  place-items: center;
+  border: 1px solid var(--color-border-strong);
+  border-radius: 6px;
+  background: var(--color-surface-alt);
+}
+
+.slide-design-image {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  max-width: none;
+  object-fit: cover;
+  pointer-events: none;
+}
+
+.slide-text-element {
+  position: absolute;
+  display: block;
+  overflow: hidden;
+  padding: 0;
+  border: 1px solid transparent;
+  background: transparent;
+  cursor: pointer;
+  white-space: pre-wrap;
+}
+
+.slide-text-element.is-selected {
+  border-color: var(--color-accent);
+  outline: 1px solid var(--color-bg);
+}
+
+.slide-design-panel {
+  display: grid;
+  align-content: start;
+  gap: 10px;
+  min-width: 0;
+}
+
+.slide-design-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.slide-design-panel-header strong {
+  display: block;
+  margin-top: 2px;
+  font-size: 13px;
+}
+
+.design-field,
+.design-field-row {
+  display: grid;
+  gap: 7px;
+}
+
+.design-field {
+  color: var(--color-muted);
+  font-size: 12px;
+}
+
+.design-field-row {
+  grid-template-columns: 1fr 72px;
+}
+
+.design-field textarea,
+.design-field input {
+  width: 100%;
+  border: 1px solid var(--color-border);
+  border-radius: 5px;
+  background: var(--color-surface);
+  color: var(--color-text);
+}
+
+.design-field textarea {
+  min-height: 76px;
+  resize: vertical;
+  padding: 8px;
+}
+
+.design-field input {
+  height: 32px;
+  padding: 0 8px;
+}
+
+.design-empty {
+  margin: 0;
+  color: var(--color-muted);
+  font-size: 12px;
+  line-height: 1.4;
 }
 
 .carousel-slide-card img,
