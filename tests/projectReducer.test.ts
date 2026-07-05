@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   addSlideToPost,
   addSourceAsset,
+  addTextElementToSlide,
   autoArrangeCanvasItems,
   clearActiveGrid,
   convertPostToCarousel,
@@ -17,6 +18,7 @@ import {
   removeCanvasItems,
   removePostFromGridSlot,
   removeSlideFromPost,
+  removeSlideElement,
   replaceAssetInGridSlot,
   replacePostSlides,
   reorderActiveGrid,
@@ -25,6 +27,7 @@ import {
   setCanvasItemPosition,
   setSlideCrop,
   togglePostLock,
+  updateSlideElement,
 } from "../src/features/project/projectReducer";
 import type { CanvasItem, SourceAsset } from "../src/lib/types";
 
@@ -366,6 +369,41 @@ describe("projectReducer", () => {
       "slide-custom-a",
       "slide-custom-b",
     ]);
+  });
+
+  it("adds, updates, and removes text elements on a carousel slide", () => {
+    const project = createEmptyProject("2026-05-31T00:00:00.000Z");
+    const withPost = insertAssetIntoGrid(project, "asset-a", 0);
+    const postId = withPost.posts[0].id;
+    const carousel = addSlideToPost(convertPostToCarousel(withPost, postId), postId, "asset-b");
+    const slideId = carousel.posts[0].slides[1].id;
+    const withText = addTextElementToSlide(carousel, slideId, {
+      content: "Launch checklist",
+      x: 0.1,
+      y: 0.2,
+    });
+    const textElement = withText.posts[0].slides[1].elements?.[0];
+
+    expect(textElement).toMatchObject({
+      type: "text",
+      content: "Launch checklist",
+      x: 0.1,
+      y: 0.2,
+    });
+
+    const updated = updateSlideElement(withText, slideId, textElement?.id ?? "", {
+      content: "Updated headline",
+      style: { color: "#111827", fontSize: 64 },
+    });
+
+    expect(updated.posts[0].slides[1].elements?.[0]).toMatchObject({
+      content: "Updated headline",
+      style: expect.objectContaining({ color: "#111827", fontSize: 64, fontWeight: 700 }),
+    });
+
+    const removed = removeSlideElement(updated, slideId, textElement?.id ?? "");
+
+    expect(removed.posts[0].slides[1].elements).toEqual([]);
   });
 
   it("duplicates the active grid version", () => {

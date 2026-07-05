@@ -5,6 +5,7 @@ import type {
   Post,
   Project,
   Slide,
+  SlideTextElement,
   SourceAsset,
 } from "../../lib/types";
 
@@ -403,6 +404,92 @@ export function setSlideCrop(project: Project, slideId: string, crop: CropState)
   };
 }
 
+export function addTextElementToSlide(
+  project: Project,
+  slideId: string,
+  input: Partial<Pick<SlideTextElement, "x" | "y" | "width" | "height" | "content">> = {},
+): Project {
+  const textElement: SlideTextElement = {
+    id: createId("element"),
+    type: "text",
+    x: input.x ?? 0.12,
+    y: input.y ?? 0.18,
+    width: input.width ?? 0.76,
+    height: input.height ?? 0.18,
+    content: input.content ?? "Double-click to edit",
+    style: {
+      fontFamily: "Inter, Arial, sans-serif",
+      fontSize: 72,
+      fontWeight: 700,
+      color: "#f8fafc",
+      textAlign: "center",
+      lineHeight: 1.05,
+    },
+  };
+
+  return {
+    ...touch(project),
+    posts: project.posts.map((post) => ({
+      ...post,
+      slides: post.slides.map((slide) =>
+        slide.id === slideId
+          ? {
+              ...slide,
+              elements: [...(slide.elements ?? []), textElement],
+            }
+          : slide,
+      ),
+    })),
+  };
+}
+
+export function updateSlideElement(
+  project: Project,
+  slideId: string,
+  elementId: string,
+  patch: Partial<SlideTextElement>,
+): Project {
+  return {
+    ...touch(project),
+    posts: project.posts.map((post) => ({
+      ...post,
+      slides: post.slides.map((slide) =>
+        slide.id === slideId
+          ? {
+              ...slide,
+              elements: (slide.elements ?? []).map((element) =>
+                element.id === elementId
+                  ? {
+                      ...element,
+                      ...patch,
+                      style: patch.style ? { ...element.style, ...patch.style } : element.style,
+                    }
+                  : element,
+              ),
+            }
+          : slide,
+      ),
+    })),
+  };
+}
+
+export function removeSlideElement(project: Project, slideId: string, elementId: string): Project {
+  return {
+    ...touch(project),
+    posts: project.posts.map((post) => ({
+      ...post,
+      slides: post.slides.map((slide) =>
+        slide.id === slideId
+          ? {
+              ...slide,
+              elements: (slide.elements ?? []).filter((element) => element.id !== elementId),
+            }
+          : slide,
+      ),
+    })),
+  };
+}
+
 export function rotateSlideCrop(project: Project, slideId: string, direction: -1 | 1): Project {
   return {
     ...touch(project),
@@ -663,6 +750,7 @@ function createSlide(sourceImageId: string): Slide {
     id: createId("slide"),
     sourceImageId,
     crop: { ...defaultCrop },
+    elements: [],
   };
 }
 

@@ -62,6 +62,8 @@ export type Slide = {
   id: string;
   sourceImageId: string;
   crop: CropState;
+  background?: SlideBackground;
+  elements?: SlideElement[];
 };
 
 export type CropState = {
@@ -73,3 +75,30 @@ export type CropState = {
 };
 
 export type ExportFormat = "jpeg" | "png";
+
+export type SlideBackground = {
+  type: "solid";
+  color: string;
+};
+
+export type SlideElement = SlideTextElement;
+
+export type SlideTextElement = {
+  id: string;
+  type: "text";
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  content: string;
+  style: SlideTextStyle;
+};
+
+export type SlideTextStyle = {
+  fontFamily: string;
+  fontSize: number;
+  fontWeight: 400 | 500 | 600 | 700 | 800;
+  color: string;
+  textAlign: "left" | "center" | "right";
+  lineHeight: number;
+};
