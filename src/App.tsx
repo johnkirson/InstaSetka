@@ -1785,6 +1785,18 @@ export function App() {
     );
   }
 
+  function updateSelectedSlideElementLayout(
+    layout: Partial<Pick<SlideElement, "x" | "y" | "width" | "height">>,
+  ) {
+    if (!selectedSlide || !selectedSlideElement) {
+      return;
+    }
+
+    commitProjectChange((currentProject) =>
+      updateSlideElement(currentProject, selectedSlide.id, selectedSlideElement.id, layout),
+    );
+  }
+
   function deleteSelectedSlideElement() {
     if (!selectedSlide || !selectedSlideElement) {
       return;
@@ -1794,6 +1806,63 @@ export function App() {
       removeSlideElement(currentProject, selectedSlide.id, selectedSlideElement.id),
     );
     setSelectedSlideElementId(null);
+  }
+
+  function handleSlideElementPointerDown(
+    event: ReactPointerEvent<HTMLButtonElement>,
+    element: SlideElement,
+  ) {
+    if (!selectedSlide) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    setSelectedSlideElementId(element.id);
+    rememberProjectForUndo();
+
+    const canvas = event.currentTarget.closest<HTMLElement>(".slide-design-canvas");
+    if (!canvas) {
+      return;
+    }
+
+    const canvasRect = canvas.getBoundingClientRect();
+    const start = {
+      x: event.clientX,
+      y: event.clientY,
+      elementX: element.x,
+      elementY: element.y,
+    };
+    const slideId = selectedSlide.id;
+
+    function handlePointerMove(moveEvent: PointerEvent) {
+      const nextX = clamp(
+        start.elementX + (moveEvent.clientX - start.x) / canvasRect.width,
+        0,
+        1 - element.width,
+      );
+      const nextY = clamp(
+        start.elementY + (moveEvent.clientY - start.y) / canvasRect.height,
+        0,
+        1 - element.height,
+      );
+
+      setProject((currentProject) =>
+        updateSlideElement(currentProject, slideId, element.id, {
+          x: Number(nextX.toFixed(4)),
+          y: Number(nextY.toFixed(4)),
+        }),
+      );
+    }
+
+    function handlePointerUp() {
+      window.removeEventListener("pointermove", handlePointerMove);
+      window.removeEventListener("pointerup", handlePointerUp);
+    }
+
+    window.addEventListener("pointermove", handlePointerMove);
+    window.addEventListener("pointerup", handlePointerUp, { once: true });
   }
 
   function duplicateCarouselSlide(slideId: string) {
@@ -2595,7 +2664,13 @@ export function App() {
                         selectedSlideElementId === element.id ? "is-selected" : ""
                       }`}
                       key={element.id}
+                      data-slide-element-id={element.id}
+                      data-slide-element-x={element.x}
+                      data-slide-element-y={element.y}
+                      data-slide-element-width={element.width}
+                      data-slide-element-height={element.height}
                       style={getSlideElementStyle(element)}
+                      onPointerDown={(event) => handleSlideElementPointerDown(event, element)}
                       onClick={(event) => {
                         event.stopPropagation();
                         setSelectedSlideElementId(element.id);
@@ -2647,6 +2722,42 @@ export function App() {
                             type="color"
                             value={selectedSlideElement.style.color}
                             onChange={(event) => updateSelectedSlideElementStyle({ color: event.target.value })}
+                          />
+                        </label>
+                      </div>
+                      <div className="design-field-row">
+                        <label className="design-field">
+                          Width %
+                          <input
+                            aria-label="Text box width"
+                            min="20"
+                            max="100"
+                            type="number"
+                            value={Math.round(selectedSlideElement.width * 100)}
+                            onChange={(event) => {
+                              const width = clamp((Number(event.target.value) || 20) / 100, 0.2, 1);
+                              updateSelectedSlideElementLayout({
+                                width,
+                                x: clamp(selectedSlideElement.x, 0, 1 - width),
+                              });
+                            }}
+                          />
+                        </label>
+                        <label className="design-field">
+                          Height %
+                          <input
+                            aria-label="Text box height"
+                            min="8"
+                            max="60"
+                            type="number"
+                            value={Math.round(selectedSlideElement.height * 100)}
+                            onChange={(event) => {
+                              const height = clamp((Number(event.target.value) || 8) / 100, 0.08, 0.6);
+                              updateSelectedSlideElementLayout({
+                                height,
+                                y: clamp(selectedSlideElement.y, 0, 1 - height),
+                              });
+                            }}
                           />
                         </label>
                       </div>

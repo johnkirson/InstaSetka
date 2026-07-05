@@ -551,6 +551,28 @@ test("adds and edits a text layer in the carousel workspace", async ({ page }) =
 
   await expect(page.getByRole("button", { name: "Launch checklist" })).toBeVisible();
   await expect(page.getByLabel("Text properties")).toContainText("Text layer");
+
+  const editedLayer = page.getByRole("button", { name: "Launch checklist" });
+  const beforeDrag = await editedLayer.boundingBox();
+  if (!beforeDrag) {
+    throw new Error("Text layer bounding box was not available");
+  }
+
+  await page.mouse.move(beforeDrag.x + beforeDrag.width / 2, beforeDrag.y + beforeDrag.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(beforeDrag.x + beforeDrag.width / 2 + 100, beforeDrag.y + beforeDrag.height / 2 + 56);
+  await page.mouse.up();
+
+  const afterDrag = await editedLayer.boundingBox();
+  if (!afterDrag) {
+    throw new Error("Text layer bounding box was not available after drag");
+  }
+  expect(afterDrag.x).toBeGreaterThan(beforeDrag.x + 12);
+  expect(afterDrag.y).toBeGreaterThan(beforeDrag.y + 12);
+  await expect(editedLayer).not.toHaveAttribute("data-slide-element-x", "0.12");
+
+  await page.getByLabel("Text box width").fill("52");
+  await expect(editedLayer).toHaveAttribute("data-slide-element-width", "0.52");
 });
 
 test("lists quality map issues and selects the affected grid slot", async ({ page }) => {
