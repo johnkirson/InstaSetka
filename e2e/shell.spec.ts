@@ -573,6 +573,16 @@ test("adds and edits a text layer in the carousel workspace", async ({ page }) =
 
   await page.getByLabel("Text box width").fill("52");
   await expect(editedLayer).toHaveAttribute("data-slide-element-width", "0.52");
+
+  await page.getByRole("button", { name: /Quote/ }).click();
+  await expect(page.getByRole("button", { name: /Strong carousels/ })).toBeVisible();
+  await expect(page.getByLabel("Text properties")).toContainText("Quote");
+  await page.getByLabel("Text content").fill("Template edited");
+  await expect(page.getByRole("button", { name: "Template edited" })).toBeVisible();
+  await page.getByLabel("Text font").selectOption({ label: "Poppins" });
+  await page.getByRole("button", { name: "Align center" }).click();
+  await page.getByRole("button", { name: "Align middle" }).click();
+  await expect(page.getByRole("button", { name: "Template edited" })).toHaveAttribute("data-slide-element-x", "0.12");
 });
 
 test("lists quality map issues and selects the affected grid slot", async ({ page }) => {

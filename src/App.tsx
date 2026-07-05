@@ -50,6 +50,7 @@ import {
   addSourceAsset,
   addSlideToPost,
   addTextElementToSlide,
+  applySlideTemplate,
   autoArrangeCanvasItems,
   clearActiveGrid,
   convertPostToCarousel,
@@ -95,6 +96,8 @@ import {
   inferSplitDirection,
   type SplitDirection,
 } from "./features/splitter/longImageSplitter";
+import { carouselSlideTemplates, type CarouselSlideTemplate } from "./features/templates/carouselTemplates";
+import { googleFontOptions } from "./features/templates/fontOptions";
 import { FeatureTour, type TourStep } from "./features/tour/FeatureTour";
 import type { CanvasItem, MosaicGroup, Project, Slide, SlideElement, SlideTextStyle, SourceAsset } from "./lib/types";
 import type { AspectRatio, ExportFormat } from "./lib/types";
@@ -708,7 +711,7 @@ export function App() {
 
   useEffect(() => {
     if (!selectedSlide?.elements?.some((element) => element.id === selectedSlideElementId)) {
-      setSelectedSlideElementId(null);
+      setSelectedSlideElementId(selectedSlide?.templateId ? selectedSlide.elements?.[0]?.id ?? null : null);
     }
   }, [selectedSlide, selectedSlideElementId]);
 
@@ -1797,6 +1800,49 @@ export function App() {
     );
   }
 
+  function alignSelectedSlideElement(alignment: "left" | "center" | "right" | "top" | "middle" | "bottom") {
+    if (!selectedSlideElement) {
+      return;
+    }
+
+    const nextLayout: Partial<Pick<SlideElement, "x" | "y">> = {};
+
+    if (alignment === "left") {
+      nextLayout.x = 0;
+    }
+
+    if (alignment === "center") {
+      nextLayout.x = (1 - selectedSlideElement.width) / 2;
+    }
+
+    if (alignment === "right") {
+      nextLayout.x = 1 - selectedSlideElement.width;
+    }
+
+    if (alignment === "top") {
+      nextLayout.y = 0;
+    }
+
+    if (alignment === "middle") {
+      nextLayout.y = (1 - selectedSlideElement.height) / 2;
+    }
+
+    if (alignment === "bottom") {
+      nextLayout.y = 1 - selectedSlideElement.height;
+    }
+
+    updateSelectedSlideElementLayout(nextLayout);
+  }
+
+  function applyTemplateToSelectedSlide(template: CarouselSlideTemplate) {
+    if (!selectedSlide) {
+      return;
+    }
+
+    commitProjectChange((currentProject) => applySlideTemplate(currentProject, selectedSlide.id, template));
+    setSelectedSlideElementId(null);
+  }
+
   function deleteSelectedSlideElement() {
     if (!selectedSlide || !selectedSlideElement) {
       return;
@@ -2691,6 +2737,26 @@ export function App() {
                       Text
                     </button>
                   </div>
+                  <div className="template-picker" aria-label="Slide templates">
+                    <div className="template-picker-header">
+                      <span>Templates</span>
+                      {selectedSlide?.templateId ? (
+                        <em>{carouselSlideTemplates.find((template) => template.id === selectedSlide.templateId)?.name}</em>
+                      ) : null}
+                    </div>
+                    <div className="template-list">
+                      {carouselSlideTemplates.map((template) => (
+                        <button
+                          className={`template-card ${selectedSlide?.templateId === template.id ? "is-active" : ""}`}
+                          key={template.id}
+                          onClick={() => applyTemplateToSelectedSlide(template)}
+                        >
+                          <span>{template.name}</span>
+                          <small>{template.description}</small>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                   {selectedSlideElement ? (
                     <>
                       <label className="design-field">
@@ -2725,6 +2791,20 @@ export function App() {
                           />
                         </label>
                       </div>
+                      <label className="design-field">
+                        Font
+                        <select
+                          aria-label="Text font"
+                          value={selectedSlideElement.style.fontFamily}
+                          onChange={(event) => updateSelectedSlideElementStyle({ fontFamily: event.target.value })}
+                        >
+                          {googleFontOptions.map((font) => (
+                            <option key={font.family} value={font.stack}>
+                              {font.label}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
                       <div className="design-field-row">
                         <label className="design-field">
                           Width %
@@ -2769,6 +2849,28 @@ export function App() {
                             onClick={() => updateSelectedSlideElementStyle({ textAlign: alignment })}
                           >
                             {alignment[0].toUpperCase()}
+                          </button>
+                        ))}
+                      </div>
+                      <div className="alignment-tools" aria-label="Align text block">
+                        {[
+                          ["left", "Left"],
+                          ["center", "Center"],
+                          ["right", "Right"],
+                          ["top", "Top"],
+                          ["middle", "Middle"],
+                          ["bottom", "Bottom"],
+                        ].map(([alignment, label]) => (
+                          <button
+                            aria-label={`Align ${label.toLowerCase()}`}
+                            key={alignment}
+                            onClick={() =>
+                              alignSelectedSlideElement(
+                                alignment as "left" | "center" | "right" | "top" | "middle" | "bottom",
+                              )
+                            }
+                          >
+                            {label}
                           </button>
                         ))}
                       </div>
@@ -3453,7 +3555,7 @@ function getSlideElementStyle(element: SlideElement): CSSProperties {
     minHeight: `${element.height * 100}%`,
     color: element.style.color,
     fontFamily: element.style.fontFamily,
-    fontSize: `clamp(12px, ${(element.style.fontSize / 1080) * 100}vw, ${element.style.fontSize}px)`,
+    fontSize: `clamp(9px, ${(element.style.fontSize / 1080) * 100}cqw, ${element.style.fontSize}px)`,
     fontWeight: element.style.fontWeight,
     lineHeight: element.style.lineHeight,
     textAlign: element.style.textAlign,

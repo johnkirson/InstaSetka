@@ -3,6 +3,7 @@ import {
   addSlideToPost,
   addSourceAsset,
   addTextElementToSlide,
+  applySlideTemplate,
   autoArrangeCanvasItems,
   clearActiveGrid,
   convertPostToCarousel,
@@ -404,6 +405,49 @@ describe("projectReducer", () => {
     const removed = removeSlideElement(updated, slideId, textElement?.id ?? "");
 
     expect(removed.posts[0].slides[1].elements).toEqual([]);
+  });
+
+  it("applies a slide template without changing source image or crop", () => {
+    const project = createEmptyProject("2026-05-31T00:00:00.000Z");
+    const withPost = insertAssetIntoGrid(project, "asset-a", 0);
+    const slideId = withPost.posts[0].slides[0].id;
+    const cropped = setSlideCrop(withPost, slideId, {
+      aspectRatio: "4:5",
+      x: 24,
+      y: -12,
+      scale: 1.4,
+      rotation: 90,
+    });
+    const templated = applySlideTemplate(cropped, slideId, {
+      id: "cover",
+      elements: [
+        {
+          id: "template-title",
+          type: "text",
+          x: 0.1,
+          y: 0.2,
+          width: 0.8,
+          height: 0.18,
+          content: "Template title",
+          style: {
+            fontFamily: "Inter, Arial, sans-serif",
+            fontSize: 72,
+            fontWeight: 800,
+            color: "#ffffff",
+            textAlign: "left",
+            lineHeight: 1,
+          },
+        },
+      ],
+    });
+    const slide = templated.posts[0].slides[0];
+
+    expect(slide.sourceImageId).toBe("asset-a");
+    expect(slide.crop).toEqual(cropped.posts[0].slides[0].crop);
+    expect(slide.templateId).toBe("cover");
+    expect(slide.elements).toHaveLength(1);
+    expect(slide.elements?.[0]).toMatchObject({ content: "Template title", x: 0.1 });
+    expect(slide.elements?.[0].id).toMatch(/^element_/);
   });
 
   it("duplicates the active grid version", () => {

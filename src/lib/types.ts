@@ -64,6 +64,7 @@ export type Slide = {
   crop: CropState;
   background?: SlideBackground;
   elements?: SlideElement[];
+  templateId?: string;
 };
 
 export type CropState = {

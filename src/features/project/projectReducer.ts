@@ -5,6 +5,7 @@ import type {
   Post,
   Project,
   Slide,
+  SlideElement,
   SlideTextElement,
   SlideTextStyle,
   SourceAsset,
@@ -495,6 +496,28 @@ export function removeSlideElement(project: Project, slideId: string, elementId:
   };
 }
 
+export function applySlideTemplate(
+  project: Project,
+  slideId: string,
+  template: { id: string; elements: SlideElement[] },
+): Project {
+  return {
+    ...touch(project),
+    posts: project.posts.map((post) => ({
+      ...post,
+      slides: post.slides.map((slide) =>
+        slide.id === slideId
+          ? {
+              ...slide,
+              templateId: template.id,
+              elements: template.elements.map(cloneSlideElement),
+            }
+          : slide,
+      ),
+    })),
+  };
+}
+
 export function rotateSlideCrop(project: Project, slideId: string, direction: -1 | 1): Project {
   return {
     ...touch(project),
@@ -756,6 +779,14 @@ function createSlide(sourceImageId: string): Slide {
     sourceImageId,
     crop: { ...defaultCrop },
     elements: [],
+  };
+}
+
+function cloneSlideElement(element: SlideElement): SlideElement {
+  return {
+    ...element,
+    id: createId("element"),
+    style: { ...element.style },
   };
 }
 
