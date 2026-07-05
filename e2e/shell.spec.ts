@@ -551,6 +551,7 @@ test("adds and edits a text layer in the carousel workspace", async ({ page }) =
   }
   expect(slideStripBox.height).toBeLessThanOrEqual(110);
   expect(Math.abs(firstSlideThumbnailBox.width - firstSlideThumbnailBox.height)).toBeLessThan(2);
+  await expect(slideStrip.getByRole("button", { name: /Move slide|Duplicate slide|Remove slide/ })).toHaveCount(0);
   await page.getByRole("button", { name: "Text", exact: true }).click();
 
   const textLayer = page.getByRole("button", { name: "Double-click to edit" });

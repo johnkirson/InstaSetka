@@ -792,30 +792,6 @@ h2 {
   font-size: 12px;
 }
 
-.carousel-slide-actions {
-  position: absolute;
-  right: 4px;
-  bottom: 4px;
-  display: none;
-  grid-template-columns: repeat(2, 20px);
-  gap: 4px;
-}
-
-.carousel-slide-card:hover .carousel-slide-actions,
-.carousel-slide-card:focus-visible .carousel-slide-actions,
-.carousel-slide-card.is-selected .carousel-slide-actions {
-  display: grid;
-}
-
-.carousel-slide-actions .icon-button {
-  width: 20px;
-  height: 20px;
-  border-radius: 4px;
-  background: rgb(0 0 0 / 0.62);
-  color: #ffffff;
-  font-size: 11px;
-}
-
 .carousel-assets {
   display: grid;
   align-content: start;

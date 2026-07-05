@@ -58,7 +58,6 @@ import {
   deleteGridVersion,
   defaultCrop,
   duplicateActiveGridVersion,
-  duplicateSlideInPost,
   insertAssetAcrossGridSlots,
   moveCanvasItems,
   movePostToGridSlot,
@@ -66,7 +65,6 @@ import {
   moveSlideInPost,
   removeCanvasItems,
   removePostFromGridSlot,
-  removeSlideFromPost,
   removeSlideElement,
   replacePostSlides,
   rotateSlideCrop,
@@ -1980,23 +1978,6 @@ export function App() {
     window.addEventListener("pointerup", handlePointerUp, { once: true });
   }
 
-  function duplicateCarouselSlide(slideId: string) {
-    if (!selectedGridPost) {
-      return;
-    }
-
-    commitProjectChange((currentProject) => duplicateSlideInPost(currentProject, selectedGridPost.id, slideId));
-  }
-
-  function removeCarouselSlide(slideId: string) {
-    if (!selectedGridPost) {
-      return;
-    }
-
-    const nextProject = removeSlideFromPost(project, selectedGridPost.id, slideId);
-    commitProjectChange(nextProject);
-  }
-
   function moveCarouselSlide(fromIndex: number, toIndex: number) {
     if (!selectedGridPost) {
       return;
@@ -2040,10 +2021,6 @@ export function App() {
     slideId: string,
     fromIndex: number,
   ) {
-    if ((event.target as HTMLElement).closest("[data-carousel-slide-action]")) {
-      return;
-    }
-
     event.preventDefault();
     event.stopPropagation();
     event.currentTarget.setPointerCapture(event.pointerId);
@@ -2747,20 +2724,6 @@ export function App() {
                     >
                       {previewUrl ? <img src={previewUrl} alt={asset?.name ?? "Carousel slide"} /> : <div className="image-placeholder" />}
                       <span className="carousel-slide-number">{index + 1}</span>
-                      <div className="carousel-slide-actions" onClick={(event) => event.stopPropagation()}>
-                        <button data-carousel-slide-action className="icon-button" aria-label={`Move slide ${index + 1} left`} disabled={index === 0} onClick={() => moveCarouselSlide(index, index - 1)}>
-                          -
-                        </button>
-                        <button data-carousel-slide-action className="icon-button" aria-label={`Move slide ${index + 1} right`} disabled={index === (selectedCarouselPost?.slides.length ?? 1) - 1} onClick={() => moveCarouselSlide(index, index + 1)}>
-                          +
-                        </button>
-                        <button data-carousel-slide-action className="icon-button" aria-label={`Duplicate slide ${index + 1}`} onClick={() => duplicateCarouselSlide(slide.id)}>
-                          <ImagePlus size={15} />
-                        </button>
-                        <button data-carousel-slide-action className="icon-button" aria-label={`Remove slide ${index + 1}`} disabled={(selectedCarouselPost?.slides.length ?? 1) <= 1} onClick={() => removeCarouselSlide(slide.id)}>
-                          <Trash2 size={15} />
-                        </button>
-                      </div>
                     </article>
                   );
                 })}
