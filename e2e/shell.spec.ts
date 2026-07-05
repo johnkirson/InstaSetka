@@ -583,6 +583,12 @@ test("adds and edits a text layer in the carousel workspace", async ({ page }) =
   await page.getByRole("button", { name: "Align center" }).click();
   await page.getByRole("button", { name: "Align middle" }).click();
   await expect(page.getByRole("button", { name: "Template edited" })).toHaveAttribute("data-slide-element-x", "0.12");
+
+  const quoteSource = page.getByRole("button", { name: "InstaSetka note" });
+  await quoteSource.click({ modifiers: ["Shift"] });
+  await expect(page.getByLabel("Text properties")).toContainText("2 text layers");
+  await page.getByRole("button", { name: "Align left" }).click();
+  await expect(quoteSource).toHaveAttribute("data-slide-element-x", "0.12");
 });
 
 test("lists quality map issues and selects the affected grid slot", async ({ page }) => {

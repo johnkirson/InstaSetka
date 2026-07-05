@@ -372,7 +372,7 @@ export function App() {
   const [selectedGridSlotIndex, setSelectedGridSlotIndex] = useState<number | null>(null);
   const [selectedGridSpanIndexes, setSelectedGridSpanIndexes] = useState<number[]>([]);
   const [selectedCarouselSlideId, setSelectedCarouselSlideId] = useState<string | null>(null);
-  const [selectedSlideElementId, setSelectedSlideElementId] = useState<string | null>(null);
+  const [selectedSlideElementIds, setSelectedSlideElementIds] = useState<string[]>([]);
   const [carouselEditorPostId, setCarouselEditorPostId] = useState<string | null>(null);
   const [draggingGridSlotIndex, setDraggingGridSlotIndex] = useState<number | null>(null);
   const [draggingCarouselSlideIndex, setDraggingCarouselSlideIndex] = useState<number | null>(null);
@@ -434,8 +434,9 @@ export function App() {
     carouselMode && selectedCarouselPost && selectedSlide
       ? selectedCarouselPost.slides.findIndex((slide) => slide.id === selectedSlide.id)
       : 0;
-  const selectedSlideElement =
-    selectedSlide?.elements?.find((element) => element.id === selectedSlideElementId) ?? null;
+  const selectedSlideElementId = selectedSlideElementIds[0] ?? null;
+  const selectedSlideElements = selectedSlide?.elements?.filter((element) => selectedSlideElementIds.includes(element.id)) ?? [];
+  const selectedSlideElement = selectedSlideElements[0] ?? null;
   const selectedSlideAsset = selectedSlide ? sourceAssetById.get(selectedSlide.sourceImageId) : undefined;
   const selectedSlidePreviewUrl = selectedSlide ? previewUrls[selectedSlide.sourceImageId] : undefined;
   const canUndo = projectHistory.past.length > 0;
@@ -697,7 +698,7 @@ export function App() {
   useEffect(() => {
     if (!carouselMode || !selectedCarouselPost) {
       setSelectedCarouselSlideId(null);
-      setSelectedSlideElementId(null);
+      setSelectedSlideElementIds([]);
       return;
     }
 
@@ -710,10 +711,18 @@ export function App() {
   }, [carouselMode, selectedCarouselPost, selectedCarouselSlideId]);
 
   useEffect(() => {
-    if (!selectedSlide?.elements?.some((element) => element.id === selectedSlideElementId)) {
-      setSelectedSlideElementId(selectedSlide?.templateId ? selectedSlide.elements?.[0]?.id ?? null : null);
+    const availableElementIds = new Set(selectedSlide?.elements?.map((element) => element.id) ?? []);
+    const validSelectedIds = selectedSlideElementIds.filter((elementId) => availableElementIds.has(elementId));
+
+    if (validSelectedIds.length !== selectedSlideElementIds.length) {
+      setSelectedSlideElementIds(validSelectedIds);
+      return;
     }
-  }, [selectedSlide, selectedSlideElementId]);
+
+    if (validSelectedIds.length === 0 && selectedSlide?.templateId && selectedSlide.elements?.[0]) {
+      setSelectedSlideElementIds([selectedSlide.elements[0].id]);
+    }
+  }, [selectedSlide, selectedSlideElementIds]);
 
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
@@ -1779,12 +1788,15 @@ export function App() {
   }
 
   function updateSelectedSlideElementStyle(style: Partial<SlideTextStyle>) {
-    if (!selectedSlide || !selectedSlideElement) {
+    if (!selectedSlide || selectedSlideElements.length === 0) {
       return;
     }
 
     commitProjectChange((currentProject) =>
-      updateSlideElement(currentProject, selectedSlide.id, selectedSlideElement.id, { style }),
+      selectedSlideElements.reduce(
+        (nextProject, element) => updateSlideElement(nextProject, selectedSlide.id, element.id, { style }),
+        currentProject,
+      ),
     );
   }
 
@@ -1801,37 +1813,56 @@ export function App() {
   }
 
   function alignSelectedSlideElement(alignment: "left" | "center" | "right" | "top" | "middle" | "bottom") {
-    if (!selectedSlideElement) {
+    if (!selectedSlide || selectedSlideElements.length === 0) {
       return;
     }
 
-    const nextLayout: Partial<Pick<SlideElement, "x" | "y">> = {};
+    const bounds =
+      selectedSlideElements.length > 1
+        ? getSlideElementsBounds(selectedSlideElements)
+        : { left: 0, top: 0, right: 1, bottom: 1, centerX: 0.5, centerY: 0.5 };
 
-    if (alignment === "left") {
-      nextLayout.x = 0;
-    }
+    commitProjectChange((currentProject) =>
+      selectedSlideElements.reduce((nextProject, element) => {
+        const nextLayout: Partial<Pick<SlideElement, "x" | "y">> = {};
 
-    if (alignment === "center") {
-      nextLayout.x = (1 - selectedSlideElement.width) / 2;
-    }
+        if (alignment === "left") {
+          nextLayout.x = bounds.left;
+        }
 
-    if (alignment === "right") {
-      nextLayout.x = 1 - selectedSlideElement.width;
-    }
+        if (alignment === "center") {
+          nextLayout.x = bounds.centerX - element.width / 2;
+        }
 
-    if (alignment === "top") {
-      nextLayout.y = 0;
-    }
+        if (alignment === "right") {
+          nextLayout.x = bounds.right - element.width;
+        }
 
-    if (alignment === "middle") {
-      nextLayout.y = (1 - selectedSlideElement.height) / 2;
-    }
+        if (alignment === "top") {
+          nextLayout.y = bounds.top;
+        }
 
-    if (alignment === "bottom") {
-      nextLayout.y = 1 - selectedSlideElement.height;
-    }
+        if (alignment === "middle") {
+          nextLayout.y = bounds.centerY - element.height / 2;
+        }
 
-    updateSelectedSlideElementLayout(nextLayout);
+        if (alignment === "bottom") {
+          nextLayout.y = bounds.bottom - element.height;
+        }
+
+        const patch: Partial<Pick<SlideElement, "x" | "y">> = {};
+
+        if (nextLayout.x !== undefined) {
+          patch.x = Number(clamp(nextLayout.x, 0, 1 - element.width).toFixed(4));
+        }
+
+        if (nextLayout.y !== undefined) {
+          patch.y = Number(clamp(nextLayout.y, 0, 1 - element.height).toFixed(4));
+        }
+
+        return updateSlideElement(nextProject, selectedSlide.id, element.id, patch);
+      }, currentProject),
+    );
   }
 
   function applyTemplateToSelectedSlide(template: CarouselSlideTemplate) {
@@ -1840,18 +1871,36 @@ export function App() {
     }
 
     commitProjectChange((currentProject) => applySlideTemplate(currentProject, selectedSlide.id, template));
-    setSelectedSlideElementId(null);
+    setSelectedSlideElementIds([]);
   }
 
   function deleteSelectedSlideElement() {
-    if (!selectedSlide || !selectedSlideElement) {
+    if (!selectedSlide || selectedSlideElements.length === 0) {
       return;
     }
 
     commitProjectChange((currentProject) =>
-      removeSlideElement(currentProject, selectedSlide.id, selectedSlideElement.id),
+      selectedSlideElements.reduce(
+        (nextProject, element) => removeSlideElement(nextProject, selectedSlide.id, element.id),
+        currentProject,
+      ),
     );
-    setSelectedSlideElementId(null);
+    setSelectedSlideElementIds([]);
+  }
+
+  function selectSlideElement(elementId: string, additive: boolean) {
+    if (!additive) {
+      setSelectedSlideElementIds([elementId]);
+      return;
+    }
+
+    setSelectedSlideElementIds((currentIds) => {
+      if (currentIds.includes(elementId)) {
+        return currentIds.filter((currentId) => currentId !== elementId);
+      }
+
+      return [...currentIds, elementId];
+    });
   }
 
   function handleSlideElementPointerDown(
@@ -1864,8 +1913,14 @@ export function App() {
 
     event.preventDefault();
     event.stopPropagation();
+    const additiveSelection = event.shiftKey || event.ctrlKey || event.metaKey;
+    selectSlideElement(element.id, additiveSelection);
+
+    if (additiveSelection) {
+      return;
+    }
+
     event.currentTarget.setPointerCapture(event.pointerId);
-    setSelectedSlideElementId(element.id);
     rememberProjectForUndo();
 
     const canvas = event.currentTarget.closest<HTMLElement>(".slide-design-canvas");
@@ -1874,31 +1929,45 @@ export function App() {
     }
 
     const canvasRect = canvas.getBoundingClientRect();
+    const draggedElementIds = selectedSlideElementIds.includes(element.id) ? selectedSlideElementIds : [element.id];
+    const draggedElements = selectedSlide.elements?.filter((slideElement) => draggedElementIds.includes(slideElement.id)) ?? [
+      element,
+    ];
+    const startByElementId = new Map(
+      draggedElements.map((draggedElement) => [
+        draggedElement.id,
+        {
+          elementX: draggedElement.x,
+          elementY: draggedElement.y,
+        },
+      ]),
+    );
     const start = {
       x: event.clientX,
       y: event.clientY,
-      elementX: element.x,
-      elementY: element.y,
     };
     const slideId = selectedSlide.id;
 
     function handlePointerMove(moveEvent: PointerEvent) {
-      const nextX = clamp(
-        start.elementX + (moveEvent.clientX - start.x) / canvasRect.width,
-        0,
-        1 - element.width,
-      );
-      const nextY = clamp(
-        start.elementY + (moveEvent.clientY - start.y) / canvasRect.height,
-        0,
-        1 - element.height,
-      );
+      const deltaX = (moveEvent.clientX - start.x) / canvasRect.width;
+      const deltaY = (moveEvent.clientY - start.y) / canvasRect.height;
 
       setProject((currentProject) =>
-        updateSlideElement(currentProject, slideId, element.id, {
-          x: Number(nextX.toFixed(4)),
-          y: Number(nextY.toFixed(4)),
-        }),
+        draggedElements.reduce((nextProject, draggedElement) => {
+          const startPosition = startByElementId.get(draggedElement.id);
+
+          if (!startPosition) {
+            return nextProject;
+          }
+
+          const nextX = clamp(startPosition.elementX + deltaX, 0, 1 - draggedElement.width);
+          const nextY = clamp(startPosition.elementY + deltaY, 0, 1 - draggedElement.height);
+
+          return updateSlideElement(nextProject, slideId, draggedElement.id, {
+            x: Number(nextX.toFixed(4)),
+            y: Number(nextY.toFixed(4)),
+          });
+        }, currentProject),
       );
     }
 
@@ -2692,7 +2761,7 @@ export function App() {
                   className="slide-design-canvas"
                   data-active-aspect={activeAspectRatio}
                   style={{ "--slide-aspect": cssAspectByMode[activeAspectRatio] } as CSSProperties}
-                  onClick={() => setSelectedSlideElementId(null)}
+                  onClick={() => setSelectedSlideElementIds([])}
                 >
                   {selectedSlidePreviewUrl && selectedSlideAsset && selectedSlide ? (
                     <img
@@ -2707,9 +2776,10 @@ export function App() {
                   {selectedSlide?.elements?.map((element) => (
                     <button
                       className={`slide-text-element ${
-                        selectedSlideElementId === element.id ? "is-selected" : ""
+                        selectedSlideElementIds.includes(element.id) ? "is-selected" : ""
                       }`}
                       key={element.id}
+                      aria-pressed={selectedSlideElementIds.includes(element.id)}
                       data-slide-element-id={element.id}
                       data-slide-element-x={element.x}
                       data-slide-element-y={element.y}
@@ -2719,7 +2789,6 @@ export function App() {
                       onPointerDown={(event) => handleSlideElementPointerDown(event, element)}
                       onClick={(event) => {
                         event.stopPropagation();
-                        setSelectedSlideElementId(element.id);
                       }}
                     >
                       {element.content}
@@ -2730,7 +2799,13 @@ export function App() {
                   <div className="slide-design-panel-header">
                     <div>
                       <p className="eyebrow">Design</p>
-                      <strong>{selectedSlideElement ? "Text layer" : "Slide tools"}</strong>
+                      <strong>
+                        {selectedSlideElements.length > 1
+                          ? `${selectedSlideElements.length} text layers`
+                          : selectedSlideElement
+                            ? "Text layer"
+                            : "Slide tools"}
+                      </strong>
                     </div>
                     <button className="button secondary" onClick={addTextToSelectedSlide}>
                       <Plus size={16} />
@@ -2876,7 +2951,7 @@ export function App() {
                       </div>
                       <button className="button danger" onClick={deleteSelectedSlideElement}>
                         <Trash2 size={16} />
-                        Remove text
+                        {selectedSlideElements.length > 1 ? "Remove selected" : "Remove text"}
                       </button>
                     </>
                   ) : (
@@ -3559,6 +3634,29 @@ function getSlideElementStyle(element: SlideElement): CSSProperties {
     fontWeight: element.style.fontWeight,
     lineHeight: element.style.lineHeight,
     textAlign: element.style.textAlign,
+  };
+}
+
+function getSlideElementsBounds(elements: SlideElement[]): {
+  left: number;
+  top: number;
+  right: number;
+  bottom: number;
+  centerX: number;
+  centerY: number;
+} {
+  const left = Math.min(...elements.map((element) => element.x));
+  const top = Math.min(...elements.map((element) => element.y));
+  const right = Math.max(...elements.map((element) => element.x + element.width));
+  const bottom = Math.max(...elements.map((element) => element.y + element.height));
+
+  return {
+    left,
+    top,
+    right,
+    bottom,
+    centerX: left + (right - left) / 2,
+    centerY: top + (bottom - top) / 2,
   };
 }
 
