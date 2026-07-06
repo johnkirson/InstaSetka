@@ -752,6 +752,25 @@ h2 {
   pointer-events: none;
 }
 
+.slide-alignment-grid {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  background-image:
+    linear-gradient(to right, color-mix(in srgb, var(--color-accent) 28%, transparent) 1px, transparent 1px),
+    linear-gradient(to bottom, color-mix(in srgb, var(--color-accent) 28%, transparent) 1px, transparent 1px),
+    linear-gradient(to right, color-mix(in srgb, var(--color-bg) 70%, transparent) 1px, transparent 1px),
+    linear-gradient(to bottom, color-mix(in srgb, var(--color-bg) 70%, transparent) 1px, transparent 1px);
+  background-size:
+    5% 5%,
+    5% 5%,
+    25% 25%,
+    25% 25%;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-accent) 24%, transparent);
+  opacity: 0.66;
+  pointer-events: none;
+}
+
 .slide-text-element {
   position: absolute;
   z-index: 3;

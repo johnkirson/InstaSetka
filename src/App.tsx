@@ -8,6 +8,7 @@ import {
   Files,
   Expand,
   FolderOpen,
+  Grid3X3,
   ImagePlus,
   Lock,
   HelpCircle,
@@ -122,10 +123,12 @@ const themeStorageKey = "instasetka.theme";
 const workspaceSplitStorageKey = "instasetka.workspaceSplit";
 const gridZoomStorageKey = "instasetka.gridZoom";
 const carouselEditorZoomStorageKey = "instasetka.carouselEditorZoom";
+const carouselGridStorageKey = "instasetka.carouselGrid";
 const carouselUserTemplatesStorageKey = "instasetka.carouselUserTemplates";
 const tourSeenStorageKey = "instasetka.tourSeen";
 const minWorkspaceSplit = 34;
 const maxWorkspaceSplit = 72;
+const carouselGridStep = 0.05;
 const fallbackQualitySlotSize: SlotSize = { width: 400, height: 500 };
 const quickTourSteps: TourStep[] = [
   {
@@ -393,6 +396,9 @@ export function App() {
     const savedZoom = Number(window.localStorage.getItem(carouselEditorZoomStorageKey));
     return Number.isFinite(savedZoom) ? clamp(savedZoom, 0.55, 1.6) : 1;
   });
+  const [showCarouselGrid, setShowCarouselGrid] = useState(
+    () => window.localStorage.getItem(carouselGridStorageKey) === "true",
+  );
   const [userCarouselTemplates, setUserCarouselTemplates] = useState<UserCarouselSlideTemplate[]>(() =>
     loadUserCarouselTemplates(),
   );
@@ -687,6 +693,10 @@ export function App() {
   useEffect(() => {
     window.localStorage.setItem(carouselEditorZoomStorageKey, String(carouselEditorZoom));
   }, [carouselEditorZoom]);
+
+  useEffect(() => {
+    window.localStorage.setItem(carouselGridStorageKey, String(showCarouselGrid));
+  }, [showCarouselGrid]);
 
   useEffect(() => {
     window.localStorage.setItem(carouselUserTemplatesStorageKey, JSON.stringify(userCarouselTemplates));
@@ -2221,8 +2231,18 @@ export function App() {
             return nextProject;
           }
 
-          const nextX = clamp(startPosition.elementX + deltaX, 0, 1 - draggedElement.width);
-          const nextY = clamp(startPosition.elementY + deltaY, 0, 1 - draggedElement.height);
+          const rawX = startPosition.elementX + deltaX;
+          const rawY = startPosition.elementY + deltaY;
+          const nextX = clamp(
+            showCarouselGrid ? snapToStep(rawX, carouselGridStep) : rawX,
+            0,
+            1 - draggedElement.width,
+          );
+          const nextY = clamp(
+            showCarouselGrid ? snapToStep(rawY, carouselGridStep) : rawY,
+            0,
+            1 - draggedElement.height,
+          );
 
           return updateSlideElement(nextProject, slideId, draggedElement.id, {
             x: Number(nextX.toFixed(4)),
@@ -3215,6 +3235,14 @@ export function App() {
                     </button>
                     <button onClick={() => setCarouselEditorZoom(1)}>Reset</button>
                   </div>
+                  <button
+                    className={`button secondary compact ${showCarouselGrid ? "is-active" : ""}`}
+                    aria-pressed={showCarouselGrid}
+                    onClick={() => setShowCarouselGrid((current) => !current)}
+                  >
+                    <Grid3X3 size={14} />
+                    Grid
+                  </button>
                 </div>
                 {selectedSlide ? (
                   <div
@@ -3309,6 +3337,7 @@ export function App() {
                           style={{ opacity: selectedSlide.background?.overlayOpacity ?? 0 }}
                         />
                       ) : null}
+                      {showCarouselGrid ? <div className="slide-alignment-grid" aria-hidden="true" /> : null}
                       {selectedSlide?.elements?.map((element) => (
                         <button
                           className={`slide-text-element ${
@@ -4141,6 +4170,10 @@ function getCanvasItemsBounds(
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
+}
+
+function snapToStep(value: number, step: number): number {
+  return Math.round(value / step) * step;
 }
 
 function aspectToNumber(aspectRatio: AspectRatio): number {
