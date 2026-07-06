@@ -725,6 +725,69 @@ h2 {
   text-align: right;
 }
 
+.slide-layer-list {
+  display: grid;
+  gap: 6px;
+  padding: 9px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: var(--color-surface-alt);
+}
+
+.slide-layer-list-header,
+.layer-row {
+  display: grid;
+  align-items: center;
+  gap: 6px;
+}
+
+.slide-layer-list-header {
+  grid-template-columns: minmax(0, 1fr) auto;
+  color: var(--color-muted);
+  font-size: 12px;
+}
+
+.slide-layer-list-header em {
+  font-style: normal;
+}
+
+.layer-row {
+  grid-template-columns: minmax(0, 1fr) 28px 28px;
+}
+
+.layer-row.is-selected .layer-select {
+  border-color: var(--color-accent);
+  background: color-mix(in srgb, var(--color-accent) 12%, var(--color-surface));
+}
+
+.layer-select {
+  min-width: 0;
+  height: 30px;
+  padding: 0 8px;
+  border: 1px solid var(--color-border);
+  border-radius: 5px;
+  background: var(--color-surface);
+  color: var(--color-text);
+  text-align: left;
+}
+
+.layer-select span {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.icon-button.compact {
+  width: 28px;
+  height: 30px;
+}
+
+.icon-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.42;
+}
+
 .design-field,
 .design-field-row {
   display: grid;

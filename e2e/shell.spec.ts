@@ -556,15 +556,15 @@ test("adds and edits a text layer in the carousel workspace", async ({ page }) =
   await expect(page.locator(".slide-design-overlay")).toHaveAttribute("data-overlay-opacity", "0.45");
   await page.getByRole("button", { name: "Text", exact: true }).click();
 
-  const textLayer = page.getByRole("button", { name: "Double-click to edit" });
+  const textLayer = page.locator(".slide-text-element").filter({ hasText: "Double-click to edit" });
   await expect(textLayer).toBeVisible();
   await textLayer.click();
   await page.getByLabel("Text content").fill("Launch checklist");
 
-  await expect(page.getByRole("button", { name: "Launch checklist" })).toBeVisible();
+  await expect(page.locator(".slide-text-element").filter({ hasText: "Launch checklist" })).toBeVisible();
   await expect(page.getByLabel("Text properties")).toContainText("Text layer");
 
-  const editedLayer = page.getByRole("button", { name: "Launch checklist" });
+  const editedLayer = page.locator(".slide-text-element").filter({ hasText: "Launch checklist" });
   const beforeDrag = await editedLayer.boundingBox();
   if (!beforeDrag) {
     throw new Error("Text layer bounding box was not available");
@@ -587,18 +587,29 @@ test("adds and edits a text layer in the carousel workspace", async ({ page }) =
   await expect(editedLayer).toHaveAttribute("data-slide-element-width", "0.52");
 
   await page.getByRole("button", { name: /Quote/ }).click();
-  await expect(page.getByRole("button", { name: /Strong carousels/ })).toBeVisible();
+  await expect(page.locator(".slide-text-element").filter({ hasText: "Strong carousels" })).toBeVisible();
   await expect(page.getByLabel("Text properties")).toContainText("Quote");
   await page.getByLabel("Text content").fill("Template edited");
-  await expect(page.getByRole("button", { name: "Template edited" })).toBeVisible();
+  await expect(page.locator(".slide-text-element").filter({ hasText: "Template edited" })).toBeVisible();
   await page.getByLabel("Text font").selectOption({ label: "Poppins" });
   await page.getByRole("button", { name: "Align center" }).click();
   await page.getByRole("button", { name: "Align middle" }).click();
-  await expect(page.getByRole("button", { name: "Template edited" })).toHaveAttribute("data-slide-element-x", "0.12");
+  await expect(page.locator(".slide-text-element").filter({ hasText: "Template edited" })).toHaveAttribute("data-slide-element-x", "0.12");
 
-  const quoteSource = page.getByRole("button", { name: "InstaSetka note" });
+  const quoteSource = page.locator(".slide-text-element").filter({ hasText: "InstaSetka note" });
   await quoteSource.click({ modifiers: ["Shift"] });
   await expect(page.getByLabel("Text properties")).toContainText("2 text layers");
+  await expect(page.getByLabel("Slide text layers")).toContainText("Template edited");
+  await page.getByLabel("Select layer Template edited").click();
+  await expect(page.getByLabel("Text properties")).toContainText("Text layer");
+  await page
+    .getByLabel("Slide text layers")
+    .locator(".layer-row")
+    .filter({ hasText: "Template edited" })
+    .getByLabel("Move layer down")
+    .click();
+  await expect(page.getByLabel("Slide text layers").locator(".layer-row").nth(1)).toContainText("Template edited");
+  await quoteSource.click({ modifiers: ["Shift"] });
   await page.getByRole("button", { name: "Align left" }).click();
   await expect(quoteSource).toHaveAttribute("data-slide-element-x", "0.12");
 });

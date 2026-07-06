@@ -1,5 +1,7 @@
 import {
   AlignStartHorizontal,
+  ArrowDown,
+  ArrowUp,
   ChevronDown,
   Copy,
   Download,
@@ -61,6 +63,7 @@ import {
   insertAssetAcrossGridSlots,
   moveCanvasItems,
   movePostToGridSlot,
+  moveSlideElement,
   replaceAssetInGridSlot,
   moveSlideInPost,
   removeCanvasItems,
@@ -1899,6 +1902,24 @@ export function App() {
     setSelectedSlideElementIds([]);
   }
 
+  function moveSelectedSlideLayer(elementId: string, direction: -1 | 1) {
+    if (!selectedSlide) {
+      return;
+    }
+
+    const elements = selectedSlide.elements ?? [];
+    const fromIndex = elements.findIndex((element) => element.id === elementId);
+
+    if (fromIndex < 0) {
+      return;
+    }
+
+    commitProjectChange((currentProject) =>
+      moveSlideElement(currentProject, selectedSlide.id, elementId, fromIndex + direction),
+    );
+    setSelectedSlideElementIds([elementId]);
+  }
+
   function selectSlideElement(elementId: string, additive: boolean) {
     if (!additive) {
       setSelectedSlideElementIds([elementId]);
@@ -2839,6 +2860,49 @@ export function App() {
                     </label>
                     <span>{Math.round((selectedSlide?.background?.overlayOpacity ?? 0) * 100)}%</span>
                   </div>
+                  <div className="slide-layer-list" aria-label="Slide text layers">
+                    <div className="slide-layer-list-header">
+                      <span>Layers</span>
+                      <em>{selectedSlide?.elements?.length ?? 0}</em>
+                    </div>
+                    {selectedSlide?.elements?.length ? (
+                      selectedSlide.elements.map((element, index) => {
+                        const label = getSlideElementLabel(element, index);
+                        const isSelected = selectedSlideElementIds.includes(element.id);
+
+                        return (
+                          <div className={`layer-row ${isSelected ? "is-selected" : ""}`} key={element.id}>
+                            <button
+                              className="layer-select"
+                              aria-label={`Select layer ${label}`}
+                              aria-pressed={isSelected}
+                              onClick={(event) => selectSlideElement(element.id, event.shiftKey || event.ctrlKey || event.metaKey)}
+                            >
+                              <span>{label}</span>
+                            </button>
+                            <button
+                              className="icon-button compact"
+                              aria-label="Move layer up"
+                              disabled={index === 0}
+                              onClick={() => moveSelectedSlideLayer(element.id, -1)}
+                            >
+                              <ArrowUp size={14} />
+                            </button>
+                            <button
+                              className="icon-button compact"
+                              aria-label="Move layer down"
+                              disabled={index === (selectedSlide.elements?.length ?? 0) - 1}
+                              onClick={() => moveSelectedSlideLayer(element.id, 1)}
+                            >
+                              <ArrowDown size={14} />
+                            </button>
+                          </div>
+                        );
+                      })
+                    ) : (
+                      <p className="design-empty">No text layers yet.</p>
+                    )}
+                  </div>
                   {selectedSlideElement ? (
                     <>
                       <label className="design-field">
@@ -3642,6 +3706,16 @@ function getSlideElementStyle(element: SlideElement): CSSProperties {
     lineHeight: element.style.lineHeight,
     textAlign: element.style.textAlign,
   };
+}
+
+function getSlideElementLabel(element: SlideElement, index: number): string {
+  const firstLine = element.content.split(/\r?\n/).find((line) => line.trim().length > 0)?.trim();
+
+  if (!firstLine) {
+    return `Text layer ${index + 1}`;
+  }
+
+  return firstLine.length > 34 ? `${firstLine.slice(0, 31)}...` : firstLine;
 }
 
 function getSlideElementsBounds(elements: SlideElement[]): {

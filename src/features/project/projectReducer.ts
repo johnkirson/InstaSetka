@@ -525,6 +525,32 @@ export function removeSlideElement(project: Project, slideId: string, elementId:
   };
 }
 
+export function moveSlideElement(project: Project, slideId: string, elementId: string, toIndex: number): Project {
+  return {
+    ...touch(project),
+    posts: project.posts.map((post) => ({
+      ...post,
+      slides: post.slides.map((slide) => {
+        if (slide.id !== slideId) {
+          return slide;
+        }
+
+        const elements = slide.elements ?? [];
+        const fromIndex = elements.findIndex((element) => element.id === elementId);
+
+        if (fromIndex < 0) {
+          return slide;
+        }
+
+        return {
+          ...slide,
+          elements: moveItem(elements, fromIndex, toIndex),
+        };
+      }),
+    })),
+  };
+}
+
 export function applySlideTemplate(
   project: Project,
   slideId: string,

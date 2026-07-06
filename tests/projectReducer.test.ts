@@ -15,6 +15,7 @@ import {
   insertAssetIntoGrid,
   moveCanvasItems,
   movePostToGridSlot,
+  moveSlideElement,
   moveSlideInPost,
   removeCanvasItems,
   removePostFromGridSlot,
@@ -406,6 +407,26 @@ describe("projectReducer", () => {
     const removed = removeSlideElement(updated, slideId, textElement?.id ?? "");
 
     expect(removed.posts[0].slides[1].elements).toEqual([]);
+  });
+
+  it("reorders text elements on a carousel slide", () => {
+    const project = createEmptyProject("2026-05-31T00:00:00.000Z");
+    const withPost = insertAssetIntoGrid(project, "asset-a", 0);
+    const slideId = withPost.posts[0].slides[0].id;
+    const withFirstText = addTextElementToSlide(withPost, slideId, { content: "Headline" });
+    const withSecondText = addTextElementToSlide(withFirstText, slideId, { content: "Caption" });
+    const firstElementId = withSecondText.posts[0].slides[0].elements?.[0]?.id ?? "";
+
+    const reordered = moveSlideElement(withSecondText, slideId, firstElementId, 1);
+
+    expect(reordered.posts[0].slides[0].elements?.map((element) => element.content)).toEqual([
+      "Caption",
+      "Headline",
+    ]);
+    expect(withSecondText.posts[0].slides[0].elements?.map((element) => element.content)).toEqual([
+      "Headline",
+      "Caption",
+    ]);
   });
 
   it("applies a slide template without changing source image or crop", () => {
