@@ -1924,6 +1924,16 @@ export function App() {
     setCarouselCropEditing(nextCropEditing);
   }
 
+  function handleSlideWorkspacePointerDown(event: ReactPointerEvent<HTMLElement>) {
+    const target = event.target as HTMLElement;
+
+    if (target.closest(".slide-text-element, .text-context-toolbar")) {
+      return;
+    }
+
+    clearSlideTextInteraction();
+  }
+
   function updateSelectedSlideElementStyle(style: Partial<SlideTextStyle>) {
     if (!selectedSlide || selectedSlideElements.length === 0) {
       return;
@@ -3200,7 +3210,11 @@ export function App() {
                   </div>
                 </div>
                 {selectedSlide ? (
-                  <div className="slide-crop-strip" aria-label="Carousel crop controls">
+                  <div
+                    className="slide-crop-strip"
+                    aria-label="Carousel crop controls"
+                    onPointerDownCapture={clearSlideTextInteraction}
+                  >
                     <button
                       className={`button secondary compact ${carouselCropEditing ? "is-active" : ""}`}
                       onClick={toggleCarouselCropEditing}
@@ -3232,7 +3246,7 @@ export function App() {
                     </button>
                   </div>
                 ) : null}
-                <div className="slide-editor-stage">
+                <div className="slide-editor-stage" onPointerDownCapture={handleSlideWorkspacePointerDown}>
                   <div className="slide-background-controls" aria-label="Background controls">
                     <label className="design-field">
                       Dim
