@@ -383,6 +383,8 @@ export function App() {
   const [selectedGridSpanIndexes, setSelectedGridSpanIndexes] = useState<number[]>([]);
   const [selectedCarouselSlideId, setSelectedCarouselSlideId] = useState<string | null>(null);
   const [selectedSlideElementIds, setSelectedSlideElementIds] = useState<string[]>([]);
+  const [editingSlideElementId, setEditingSlideElementId] = useState<string | null>(null);
+  const [editingSlideElementContent, setEditingSlideElementContent] = useState("");
   const [copiedSlideTextStyle, setCopiedSlideTextStyle] = useState<SlideTextStyle | null>(null);
   const [carouselTemplatePanelOpen, setCarouselTemplatePanelOpen] = useState(false);
   const [carouselLayersPanelOpen, setCarouselLayersPanelOpen] = useState(false);
@@ -741,6 +743,7 @@ export function App() {
     if (!carouselMode || !selectedCarouselPost) {
       setSelectedCarouselSlideId(null);
       setSelectedSlideElementIds([]);
+      setEditingSlideElementId(null);
       return;
     }
 
@@ -756,6 +759,11 @@ export function App() {
     const availableElementIds = new Set(selectedSlide?.elements?.map((element) => element.id) ?? []);
     const validSelectedIds = selectedSlideElementIds.filter((elementId) => availableElementIds.has(elementId));
 
+    if (editingSlideElementId && !availableElementIds.has(editingSlideElementId)) {
+      setEditingSlideElementId(null);
+      setEditingSlideElementContent("");
+    }
+
     if (validSelectedIds.length !== selectedSlideElementIds.length) {
       setSelectedSlideElementIds(validSelectedIds);
       return;
@@ -764,7 +772,7 @@ export function App() {
     if (validSelectedIds.length === 0 && selectedSlide?.templateId && selectedSlide.elements?.[0]) {
       setSelectedSlideElementIds([selectedSlide.elements[0].id]);
     }
-  }, [selectedSlide, selectedSlideElementIds]);
+  }, [editingSlideElementId, selectedSlide, selectedSlideElementIds]);
 
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
@@ -1869,6 +1877,38 @@ export function App() {
     );
   }
 
+  function startInlineSlideTextEdit(element: SlideElement) {
+    setCarouselCropEditing(false);
+    setSelectedSlideElementIds([element.id]);
+    setEditingSlideElementId(element.id);
+    setEditingSlideElementContent(element.content);
+  }
+
+  function commitInlineSlideTextEdit() {
+    if (!selectedSlide || !editingSlideElementId) {
+      return;
+    }
+
+    const nextContent = editingSlideElementContent.trimEnd();
+    const currentElement = selectedSlide.elements?.find((element) => element.id === editingSlideElementId);
+
+    if (currentElement && nextContent !== currentElement.content) {
+      commitProjectChange((currentProject) =>
+        updateSlideElement(currentProject, selectedSlide.id, editingSlideElementId, {
+          content: nextContent || "Double-click to edit",
+        }),
+      );
+    }
+
+    setEditingSlideElementId(null);
+    setEditingSlideElementContent("");
+  }
+
+  function cancelInlineSlideTextEdit() {
+    setEditingSlideElementId(null);
+    setEditingSlideElementContent("");
+  }
+
   function updateSelectedSlideElementStyle(style: Partial<SlideTextStyle>) {
     if (!selectedSlide || selectedSlideElements.length === 0) {
       return;
@@ -2089,6 +2129,10 @@ export function App() {
     element: SlideElement,
   ) {
     if (!selectedSlide) {
+      return;
+    }
+
+    if (editingSlideElementId === element.id) {
       return;
     }
 
@@ -3229,7 +3273,7 @@ export function App() {
                         <button
                           className={`slide-text-element ${
                             selectedSlideElementIds.includes(element.id) ? "is-selected" : ""
-                          }`}
+                          } ${editingSlideElementId === element.id ? "is-editing" : ""}`}
                           key={element.id}
                           aria-pressed={selectedSlideElementIds.includes(element.id)}
                           data-slide-element-id={element.id}
@@ -3239,11 +3283,41 @@ export function App() {
                           data-slide-element-height={element.height}
                           style={getSlideElementStyle(element)}
                           onPointerDown={(event) => handleSlideElementPointerDown(event, element)}
+                          onDoubleClick={(event) => {
+                            event.preventDefault();
+                            event.stopPropagation();
+                            startInlineSlideTextEdit(element);
+                          }}
                           onClick={(event) => {
                             event.stopPropagation();
                           }}
                         >
-                          {element.content}
+                          {editingSlideElementId === element.id ? (
+                            <textarea
+                              aria-label="Inline text content"
+                              autoFocus
+                              className="slide-text-inline-editor"
+                              value={editingSlideElementContent}
+                              onBlur={commitInlineSlideTextEdit}
+                              onChange={(event) => setEditingSlideElementContent(event.target.value)}
+                              onClick={(event) => event.stopPropagation()}
+                              onDoubleClick={(event) => event.stopPropagation()}
+                              onKeyDown={(event) => {
+                                if (event.key === "Escape") {
+                                  event.preventDefault();
+                                  cancelInlineSlideTextEdit();
+                                }
+
+                                if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
+                                  event.preventDefault();
+                                  commitInlineSlideTextEdit();
+                                }
+                              }}
+                              onPointerDown={(event) => event.stopPropagation()}
+                            />
+                          ) : (
+                            element.content
+                          )}
                         </button>
                       ))}
                     </div>

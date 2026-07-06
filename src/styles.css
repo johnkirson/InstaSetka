@@ -760,6 +760,26 @@ h2 {
   outline: 1px solid var(--color-bg);
 }
 
+.slide-text-element.is-editing {
+  cursor: text;
+}
+
+.slide-text-inline-editor {
+  display: block;
+  width: 100%;
+  min-height: inherit;
+  padding: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  line-height: inherit;
+  text-align: inherit;
+  resize: none;
+  white-space: pre-wrap;
+}
+
 .slide-design-panel {
   display: grid;
   align-content: start;

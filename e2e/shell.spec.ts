@@ -593,6 +593,11 @@ test("adds and edits a text layer in the carousel workspace", async ({ page }) =
 
   await expect(page.locator(".slide-text-element").filter({ hasText: "Launch checklist" })).toBeVisible();
   await expect(page.getByLabel("Text properties")).toContainText("Text layer");
+  await page.locator(".slide-text-element").filter({ hasText: "Launch checklist" }).dblclick();
+  await page.getByLabel("Inline text content").fill("Inline edited");
+  await page.getByLabel("Inline text content").press("Control+Enter");
+  await expect(page.locator(".slide-text-element").filter({ hasText: "Inline edited" })).toBeVisible();
+  await page.getByLabel("Text content").fill("Launch checklist");
 
   const editedLayer = page.locator(".slide-text-element").filter({ hasText: "Launch checklist" });
   const beforeDrag = await editedLayer.boundingBox();
