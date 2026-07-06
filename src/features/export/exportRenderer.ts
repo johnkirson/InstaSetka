@@ -1,4 +1,4 @@
-import type { AspectRatio, CropState, ExportFormat, SlideElement, SourceAsset } from "../../lib/types";
+import type { AspectRatio, CropState, ExportFormat, SlideBackground, SlideElement, SourceAsset } from "../../lib/types";
 import {
   getExportMimeType,
   getExportPreset,
@@ -12,6 +12,7 @@ export type RenderSlideExportInput = {
   slot: SlotSize;
   aspectRatio: AspectRatio;
   format: ExportFormat;
+  background?: SlideBackground;
   elements?: SlideElement[];
 };
 
@@ -35,6 +36,10 @@ export async function renderSlideExport(input: RenderSlideExportInput): Promise<
     slot: input.slot,
     target: { x: 0, y: 0, width: preset.width, height: preset.height },
   });
+  drawSlideBackgroundOverlay(context, input.background, {
+    width: preset.width,
+    height: preset.height,
+  });
   drawSlideElementsOnCanvas(context, input.elements ?? [], {
     width: preset.width,
     height: preset.height,
@@ -54,6 +59,23 @@ export async function renderSlideExport(input: RenderSlideExportInput): Promise<
       input.format === "jpeg" ? 0.95 : undefined,
     );
   });
+}
+
+export function drawSlideBackgroundOverlay(
+  context: CanvasRenderingContext2D,
+  background: SlideBackground | undefined,
+  canvasSize: { width: number; height: number },
+) {
+  const overlayOpacity = Math.max(0, Math.min(0.85, background?.overlayOpacity ?? 0));
+
+  if (overlayOpacity <= 0) {
+    return;
+  }
+
+  context.save();
+  context.fillStyle = `rgba(0, 0, 0, ${overlayOpacity})`;
+  context.fillRect(0, 0, canvasSize.width, canvasSize.height);
+  context.restore();
 }
 
 export function drawSlideElementsOnCanvas(

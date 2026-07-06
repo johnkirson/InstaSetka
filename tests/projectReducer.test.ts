@@ -28,6 +28,7 @@ import {
   setCanvasItemPosition,
   setSlideCrop,
   togglePostLock,
+  updateSlideBackground,
   updateSlideElement,
 } from "../src/features/project/projectReducer";
 import type { CanvasItem, SourceAsset } from "../src/lib/types";
@@ -448,6 +449,22 @@ describe("projectReducer", () => {
     expect(slide.elements).toHaveLength(1);
     expect(slide.elements?.[0]).toMatchObject({ content: "Template title", x: 0.1 });
     expect(slide.elements?.[0].id).toMatch(/^element_/);
+  });
+
+  it("updates a slide background overlay without changing source image or crop", () => {
+    const project = createEmptyProject("2026-05-31T00:00:00.000Z");
+    const withPost = insertAssetIntoGrid(project, "asset-a", 0);
+    const slideId = withPost.posts[0].slides[0].id;
+    const dimmed = updateSlideBackground(withPost, slideId, { overlayOpacity: 0.45 });
+    const slide = dimmed.posts[0].slides[0];
+
+    expect(slide.sourceImageId).toBe("asset-a");
+    expect(slide.crop).toEqual(withPost.posts[0].slides[0].crop);
+    expect(slide.background).toMatchObject({
+      type: "solid",
+      color: "#000000",
+      overlayOpacity: 0.45,
+    });
   });
 
   it("duplicates the active grid version", () => {

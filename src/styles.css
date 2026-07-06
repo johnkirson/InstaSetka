@@ -602,6 +602,13 @@ h2 {
   pointer-events: none;
 }
 
+.slide-design-overlay {
+  position: absolute;
+  inset: 0;
+  background: #000000;
+  pointer-events: none;
+}
+
 .slide-text-element {
   position: absolute;
   display: block;
@@ -698,6 +705,24 @@ h2 {
 .template-card small {
   color: var(--color-muted);
   font-size: 11px;
+}
+
+.slide-background-controls {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 8px;
+  padding: 9px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: var(--color-surface-alt);
+}
+
+.slide-background-controls span {
+  min-width: 34px;
+  color: var(--color-muted);
+  font-size: 12px;
+  text-align: right;
 }
 
 .design-field,

@@ -80,6 +80,7 @@ export type ExportFormat = "jpeg" | "png";
 export type SlideBackground = {
   type: "solid";
   color: string;
+  overlayOpacity?: number;
 };
 
 export type SlideElement = SlideTextElement;

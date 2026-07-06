@@ -72,6 +72,7 @@ import {
   setSlideCrop,
   setCanvasItemPosition,
   togglePostLock,
+  updateSlideBackground,
   updateSlideElement,
 } from "./features/project/projectReducer";
 import {
@@ -1775,6 +1776,18 @@ export function App() {
     commitProjectChange((currentProject) => addTextElementToSlide(currentProject, selectedSlide.id));
   }
 
+  function updateSelectedSlideOverlay(overlayOpacity: number) {
+    if (!selectedSlide) {
+      return;
+    }
+
+    commitProjectChange((currentProject) =>
+      updateSlideBackground(currentProject, selectedSlide.id, {
+        overlayOpacity: clamp(overlayOpacity, 0, 0.85),
+      }),
+    );
+  }
+
   function updateSelectedSlideElementContent(content: string) {
     if (!selectedSlide || !selectedSlideElement) {
       return;
@@ -2395,6 +2408,7 @@ export function App() {
       aspectRatio: activeAspectRatio,
       format: exportFormat,
       elements: input.slide.elements,
+      background: input.slide.background,
     });
     const filename = input.isCarousel
       ? createCarouselExportFilename(
@@ -2745,6 +2759,13 @@ export function App() {
                   ) : (
                     <div className="image-placeholder" />
                   )}
+                  {selectedSlide ? (
+                    <div
+                      className="slide-design-overlay"
+                      data-overlay-opacity={selectedSlide.background?.overlayOpacity ?? 0}
+                      style={{ opacity: selectedSlide.background?.overlayOpacity ?? 0 }}
+                    />
+                  ) : null}
                   {selectedSlide?.elements?.map((element) => (
                     <button
                       className={`slide-text-element ${
@@ -2803,6 +2824,20 @@ export function App() {
                         </button>
                       ))}
                     </div>
+                  </div>
+                  <div className="slide-background-controls" aria-label="Background controls">
+                    <label className="design-field">
+                      Background dim
+                      <input
+                        aria-label="Background dim"
+                        max="85"
+                        min="0"
+                        type="range"
+                        value={Math.round((selectedSlide?.background?.overlayOpacity ?? 0) * 100)}
+                        onChange={(event) => updateSelectedSlideOverlay(Number(event.target.value) / 100)}
+                      />
+                    </label>
+                    <span>{Math.round((selectedSlide?.background?.overlayOpacity ?? 0) * 100)}%</span>
                   </div>
                   {selectedSlideElement ? (
                     <>

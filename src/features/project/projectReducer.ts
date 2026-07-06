@@ -5,6 +5,7 @@ import type {
   Post,
   Project,
   Slide,
+  SlideBackground,
   SlideElement,
   SlideTextElement,
   SlideTextStyle,
@@ -14,6 +15,8 @@ import type {
 type SlideTextElementPatch = Partial<Omit<SlideTextElement, "style">> & {
   style?: Partial<SlideTextStyle>;
 };
+
+type SlideBackgroundPatch = Partial<SlideBackground>;
 
 export const defaultCrop: CropState = {
   aspectRatio: "4:5",
@@ -406,6 +409,32 @@ export function setSlideCrop(project: Project, slideId: string, crop: CropState)
     posts: project.posts.map((post) => ({
       ...post,
       slides: post.slides.map((slide) => (slide.id === slideId ? { ...slide, crop } : slide)),
+    })),
+  };
+}
+
+export function updateSlideBackground(
+  project: Project,
+  slideId: string,
+  patch: SlideBackgroundPatch,
+): Project {
+  return {
+    ...touch(project),
+    posts: project.posts.map((post) => ({
+      ...post,
+      slides: post.slides.map((slide) =>
+        slide.id === slideId
+          ? {
+              ...slide,
+              background: {
+                type: "solid",
+                color: "#000000",
+                ...(slide.background ?? {}),
+                ...patch,
+              },
+            }
+          : slide,
+      ),
     })),
   };
 }
