@@ -386,7 +386,6 @@ export function App() {
   const [copiedSlideTextStyle, setCopiedSlideTextStyle] = useState<SlideTextStyle | null>(null);
   const [carouselTemplatePanelOpen, setCarouselTemplatePanelOpen] = useState(false);
   const [carouselLayersPanelOpen, setCarouselLayersPanelOpen] = useState(false);
-  const [carouselTextDetailsOpen, setCarouselTextDetailsOpen] = useState(false);
   const [carouselCropEditing, setCarouselCropEditing] = useState(false);
   const [carouselEditorZoom, setCarouselEditorZoom] = useState(() => {
     const savedZoom = Number(window.localStorage.getItem(carouselEditorZoomStorageKey));
@@ -1842,8 +1841,10 @@ export function App() {
       return;
     }
 
+    const elementId = `element_${crypto.randomUUID()}`;
     setCarouselCropEditing(false);
-    commitProjectChange((currentProject) => addTextElementToSlide(currentProject, selectedSlide.id));
+    commitProjectChange((currentProject) => addTextElementToSlide(currentProject, selectedSlide.id, { id: elementId }));
+    setSelectedSlideElementIds([elementId]);
   }
 
   function updateSelectedSlideOverlay(overlayOpacity: number) {
@@ -3239,19 +3240,21 @@ export function App() {
                         </button>
                       ))}
                     </div>
+                  </div>
+                  <aside className="text-context-toolbar" aria-label="Text properties">
                     {selectedSlideElement ? (
-                      <div className="text-context-toolbar" aria-label="Text properties">
+                      <>
                         <div className="text-context-summary">
                           <strong>{selectedSlideElements.length > 1 ? `${selectedSlideElements.length} text layers` : "Text layer"}</strong>
-                          <button
-                            className="button secondary compact"
-                            aria-expanded={carouselTextDetailsOpen}
-                            onClick={() => setCarouselTextDetailsOpen((open) => !open)}
-                          >
-                            More
-                            <ChevronDown size={14} />
-                          </button>
                         </div>
+                        <label className="design-field">
+                          Content
+                          <textarea
+                            aria-label="Text content"
+                            value={selectedSlideElement.content}
+                            onChange={(event) => updateSelectedSlideElementContent(event.target.value)}
+                          />
+                        </label>
                         <div className="text-quick-controls">
                           <select
                             aria-label="Text font"
@@ -3280,17 +3283,75 @@ export function App() {
                             value={selectedSlideElement.style.color}
                             onChange={(event) => updateSelectedSlideElementStyle({ color: event.target.value })}
                           />
-                          <div className="segmented compact" aria-label="Text align">
-                            {(["left", "center", "right"] as const).map((alignment) => (
-                              <button
-                                className={selectedSlideElement.style.textAlign === alignment ? "is-active" : ""}
-                                key={alignment}
-                                onClick={() => updateSelectedSlideElementStyle({ textAlign: alignment })}
-                              >
-                                {alignment[0].toUpperCase()}
-                              </button>
-                            ))}
-                          </div>
+                        </div>
+                        <div className="design-field-row">
+                          <label className="design-field">
+                            Width %
+                            <input
+                              aria-label="Text box width"
+                              min="20"
+                              max="100"
+                              type="number"
+                              value={Math.round(selectedSlideElement.width * 100)}
+                              onChange={(event) => {
+                                const width = clamp((Number(event.target.value) || 20) / 100, 0.2, 1);
+                                updateSelectedSlideElementLayout({
+                                  width,
+                                  x: clamp(selectedSlideElement.x, 0, 1 - width),
+                                });
+                              }}
+                            />
+                          </label>
+                          <label className="design-field">
+                            Height %
+                            <input
+                              aria-label="Text box height"
+                              min="8"
+                              max="60"
+                              type="number"
+                              value={Math.round(selectedSlideElement.height * 100)}
+                              onChange={(event) => {
+                                const height = clamp((Number(event.target.value) || 8) / 100, 0.08, 0.6);
+                                updateSelectedSlideElementLayout({
+                                  height,
+                                  y: clamp(selectedSlideElement.y, 0, 1 - height),
+                                });
+                              }}
+                            />
+                          </label>
+                        </div>
+                        <div className="segmented compact" aria-label="Text align">
+                          {(["left", "center", "right"] as const).map((alignment) => (
+                            <button
+                              className={selectedSlideElement.style.textAlign === alignment ? "is-active" : ""}
+                              key={alignment}
+                              onClick={() => updateSelectedSlideElementStyle({ textAlign: alignment })}
+                            >
+                              {alignment[0].toUpperCase()}
+                            </button>
+                          ))}
+                        </div>
+                        <div className="alignment-tools" aria-label="Align text block">
+                          {[
+                            ["left", "Left"],
+                            ["center", "Center"],
+                            ["right", "Right"],
+                            ["top", "Top"],
+                            ["middle", "Middle"],
+                            ["bottom", "Bottom"],
+                          ].map(([alignment, label]) => (
+                            <button
+                              aria-label={`Align ${label.toLowerCase()}`}
+                              key={alignment}
+                              onClick={() =>
+                                alignSelectedSlideElement(
+                                  alignment as "left" | "center" | "right" | "top" | "middle" | "bottom",
+                                )
+                              }
+                            >
+                              {label}
+                            </button>
+                          ))}
                         </div>
                         <div className="layer-action-row" aria-label="Selected layer actions">
                           <button className="button secondary compact" aria-label="Duplicate layer" onClick={duplicateSelectedSlideElement}>
@@ -3310,83 +3371,15 @@ export function App() {
                             Paste style
                           </button>
                         </div>
-                        {carouselTextDetailsOpen ? (
-                          <div className="text-details-panel">
-                            <label className="design-field">
-                              Content
-                              <textarea
-                                aria-label="Text content"
-                                value={selectedSlideElement.content}
-                                onChange={(event) => updateSelectedSlideElementContent(event.target.value)}
-                              />
-                            </label>
-                            <div className="design-field-row">
-                              <label className="design-field">
-                                Width %
-                                <input
-                                  aria-label="Text box width"
-                                  min="20"
-                                  max="100"
-                                  type="number"
-                                  value={Math.round(selectedSlideElement.width * 100)}
-                                  onChange={(event) => {
-                                    const width = clamp((Number(event.target.value) || 20) / 100, 0.2, 1);
-                                    updateSelectedSlideElementLayout({
-                                      width,
-                                      x: clamp(selectedSlideElement.x, 0, 1 - width),
-                                    });
-                                  }}
-                                />
-                              </label>
-                              <label className="design-field">
-                                Height %
-                                <input
-                                  aria-label="Text box height"
-                                  min="8"
-                                  max="60"
-                                  type="number"
-                                  value={Math.round(selectedSlideElement.height * 100)}
-                                  onChange={(event) => {
-                                    const height = clamp((Number(event.target.value) || 8) / 100, 0.08, 0.6);
-                                    updateSelectedSlideElementLayout({
-                                      height,
-                                      y: clamp(selectedSlideElement.y, 0, 1 - height),
-                                    });
-                                  }}
-                                />
-                              </label>
-                            </div>
-                            <div className="alignment-tools" aria-label="Align text block">
-                              {[
-                                ["left", "Left"],
-                                ["center", "Center"],
-                                ["right", "Right"],
-                                ["top", "Top"],
-                                ["middle", "Middle"],
-                                ["bottom", "Bottom"],
-                              ].map(([alignment, label]) => (
-                                <button
-                                  aria-label={`Align ${label.toLowerCase()}`}
-                                  key={alignment}
-                                  onClick={() =>
-                                    alignSelectedSlideElement(
-                                      alignment as "left" | "center" | "right" | "top" | "middle" | "bottom",
-                                    )
-                                  }
-                                >
-                                  {label}
-                                </button>
-                              ))}
-                            </div>
-                            <button className="button danger compact" onClick={deleteSelectedSlideElement}>
-                              <Trash2 size={14} />
-                              {selectedSlideElements.length > 1 ? "Remove selected" : "Remove text"}
-                            </button>
-                          </div>
-                        ) : null}
-                      </div>
-                    ) : null}
-                  </div>
+                        <button className="button danger compact" onClick={deleteSelectedSlideElement}>
+                          <Trash2 size={14} />
+                          {selectedSlideElements.length > 1 ? "Remove selected" : "Remove text"}
+                        </button>
+                      </>
+                    ) : (
+                      <p className="design-empty">Select text on the slide or add a new layer.</p>
+                    )}
+                  </aside>
                 </div>
               </section>
               <section className="carousel-assets" aria-label="Carousel source assets">

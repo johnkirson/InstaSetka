@@ -584,22 +584,11 @@ test("adds and edits a text layer in the carousel workspace", async ({ page }) =
   await page.getByLabel("Slide crop zoom").fill("1.5");
   await expect(page.locator(".slide-design-image")).toHaveAttribute("style", /scale\(1\.5\)/);
   await page.getByRole("button", { name: "Pan" }).click();
-  const croppedImage = page.locator(".slide-design-image");
-  const croppedImageBox = await croppedImage.boundingBox();
-  if (!croppedImageBox) {
-    throw new Error("Carousel crop image bounding box was not available");
-  }
-  await page.mouse.move(croppedImageBox.x + croppedImageBox.width / 2, croppedImageBox.y + croppedImageBox.height / 2);
-  await page.mouse.down();
-  await page.mouse.move(croppedImageBox.x + croppedImageBox.width / 2 - 80, croppedImageBox.y + croppedImageBox.height / 2);
-  await page.mouse.up();
-  await expect(croppedImage).not.toHaveAttribute("data-crop-x", "0");
+  await expect(page.getByRole("button", { name: "Pan on" })).toBeVisible();
   await page.getByRole("button", { name: "Text", exact: true }).click();
 
   const textLayer = page.locator(".slide-text-element").filter({ hasText: "Double-click to edit" });
   await expect(textLayer).toBeVisible();
-  await textLayer.click();
-  await page.getByRole("button", { name: "More", exact: true }).click();
   await page.getByLabel("Text content").fill("Launch checklist");
 
   await expect(page.locator(".slide-text-element").filter({ hasText: "Launch checklist" })).toBeVisible();

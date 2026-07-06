@@ -442,10 +442,10 @@ export function updateSlideBackground(
 export function addTextElementToSlide(
   project: Project,
   slideId: string,
-  input: Partial<Pick<SlideTextElement, "x" | "y" | "width" | "height" | "content">> = {},
+  input: Partial<Pick<SlideTextElement, "id" | "x" | "y" | "width" | "height" | "content">> = {},
 ): Project {
   const textElement: SlideTextElement = {
-    id: createId("element"),
+    id: input.id ?? createId("element"),
     type: "text",
     x: input.x ?? 0.12,
     y: input.y ?? 0.18,
