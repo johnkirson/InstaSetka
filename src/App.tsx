@@ -60,6 +60,7 @@ import {
   deleteGridVersion,
   defaultCrop,
   duplicateActiveGridVersion,
+  duplicateSlideElement,
   insertAssetAcrossGridSlots,
   moveCanvasItems,
   movePostToGridSlot,
@@ -375,6 +376,7 @@ export function App() {
   const [selectedGridSpanIndexes, setSelectedGridSpanIndexes] = useState<number[]>([]);
   const [selectedCarouselSlideId, setSelectedCarouselSlideId] = useState<string | null>(null);
   const [selectedSlideElementIds, setSelectedSlideElementIds] = useState<string[]>([]);
+  const [copiedSlideTextStyle, setCopiedSlideTextStyle] = useState<SlideTextStyle | null>(null);
   const [carouselEditorPostId, setCarouselEditorPostId] = useState<string | null>(null);
   const [draggingGridSlotIndex, setDraggingGridSlotIndex] = useState<number | null>(null);
   const [draggingCarouselSlideIndex, setDraggingCarouselSlideIndex] = useState<number | null>(null);
@@ -965,7 +967,7 @@ export function App() {
         past: projectHistory.past.slice(0, -1),
         future: [currentProject, ...projectHistory.future].slice(0, 50),
       });
-      clearTransientEditingState();
+      clearTransientEditingState(previousProject);
       return previousProject;
     });
   }
@@ -981,19 +983,44 @@ export function App() {
         past: [...projectHistory.past, currentProject].slice(-50),
         future: projectHistory.future.slice(1),
       });
-      clearTransientEditingState();
+      clearTransientEditingState(nextProject);
       return nextProject;
     });
   }
 
-  function clearTransientEditingState() {
+  function clearTransientEditingState(nextProject?: Project) {
     setSelectedCanvasItemIds([]);
-    setSelectedGridSlotIndex(null);
     setSelectedGridSpanIndexes([]);
-    setSelectedCarouselSlideId(null);
-    setCarouselEditorPostId(null);
     setCropEditSlotIndex(null);
     setSelectedSlotSize(null);
+    setSelectedSlideElementIds([]);
+
+    if (!nextProject || selectedGridSlotIndex === null) {
+      setSelectedGridSlotIndex(null);
+      setSelectedCarouselSlideId(null);
+      setCarouselEditorPostId(null);
+      return;
+    }
+
+    const nextVersion = nextProject.versions.find((version) => version.id === nextProject.activeVersionId);
+    const selectedPostId = nextVersion?.postOrder[selectedGridSlotIndex] ?? null;
+    const nextSelectedPost = selectedPostId ? nextProject.posts.find((post) => post.id === selectedPostId) : undefined;
+
+    if (!nextSelectedPost) {
+      setSelectedGridSlotIndex(null);
+      setSelectedCarouselSlideId(null);
+      setCarouselEditorPostId(null);
+      return;
+    }
+
+    if (carouselEditorPostId && nextSelectedPost.id === carouselEditorPostId && nextSelectedPost.kind === "carousel") {
+      const slideStillExists = nextSelectedPost.slides.some((slide) => slide.id === selectedCarouselSlideId);
+      setSelectedCarouselSlideId(slideStillExists ? selectedCarouselSlideId : nextSelectedPost.slides[0]?.id ?? null);
+      return;
+    }
+
+    setCarouselEditorPostId(null);
+    setSelectedCarouselSlideId(null);
   }
 
   function handleCanvasDrop(event: DragEvent<HTMLDivElement>) {
@@ -1900,6 +1927,39 @@ export function App() {
       ),
     );
     setSelectedSlideElementIds([]);
+  }
+
+  function duplicateSelectedSlideElement() {
+    if (!selectedSlide || !selectedSlideElement) {
+      return;
+    }
+
+    commitProjectChange((currentProject) =>
+      duplicateSlideElement(currentProject, selectedSlide.id, selectedSlideElement.id),
+    );
+  }
+
+  function copySelectedSlideElementStyle() {
+    if (!selectedSlideElement) {
+      return;
+    }
+
+    setCopiedSlideTextStyle({ ...selectedSlideElement.style });
+  }
+
+  function pasteCopiedSlideElementStyle() {
+    if (!copiedSlideTextStyle || !selectedSlide || selectedSlideElements.length === 0) {
+      return;
+    }
+
+    commitProjectChange((currentProject) =>
+      selectedSlideElements.reduce(
+        (nextProject, element) => updateSlideElement(nextProject, selectedSlide.id, element.id, {
+          style: copiedSlideTextStyle,
+        }),
+        currentProject,
+      ),
+    );
   }
 
   function moveSelectedSlideLayer(elementId: string, direction: -1 | 1) {
@@ -2905,6 +2965,24 @@ export function App() {
                   </div>
                   {selectedSlideElement ? (
                     <>
+                      <div className="layer-action-row" aria-label="Selected layer actions">
+                        <button className="button secondary compact" aria-label="Duplicate layer" onClick={duplicateSelectedSlideElement}>
+                          <Files size={14} />
+                          Duplicate
+                        </button>
+                        <button className="button secondary compact" aria-label="Copy style" onClick={copySelectedSlideElementStyle}>
+                          <Copy size={14} />
+                          Copy style
+                        </button>
+                        <button
+                          className="button secondary compact"
+                          aria-label="Paste style"
+                          disabled={!copiedSlideTextStyle}
+                          onClick={pasteCopiedSlideElementStyle}
+                        >
+                          Paste style
+                        </button>
+                      </div>
                       <label className="design-field">
                         Content
                         <textarea

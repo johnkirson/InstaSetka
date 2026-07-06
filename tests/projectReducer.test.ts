@@ -10,6 +10,7 @@ import {
   createEmptyProject,
   deleteGridVersion,
   duplicateActiveGridVersion,
+  duplicateSlideElement,
   duplicateSlideInPost,
   insertAssetAcrossGridSlots,
   insertAssetIntoGrid,
@@ -427,6 +428,35 @@ describe("projectReducer", () => {
       "Headline",
       "Caption",
     ]);
+  });
+
+  it("duplicates a text element with the same style and a small offset", () => {
+    const project = createEmptyProject("2026-05-31T00:00:00.000Z");
+    const withPost = insertAssetIntoGrid(project, "asset-a", 0);
+    const slideId = withPost.posts[0].slides[0].id;
+    const withText = addTextElementToSlide(withPost, slideId, {
+      content: "Reusable label",
+      x: 0.2,
+      y: 0.3,
+      width: 0.4,
+      height: 0.12,
+    });
+    const sourceElement = withText.posts[0].slides[0].elements?.[0];
+
+    const duplicated = duplicateSlideElement(withText, slideId, sourceElement?.id ?? "");
+    const elements = duplicated.posts[0].slides[0].elements ?? [];
+
+    expect(elements).toHaveLength(2);
+    expect(elements[1]).toMatchObject({
+      type: "text",
+      content: "Reusable label",
+      x: 0.24,
+      y: 0.34,
+      width: 0.4,
+      height: 0.12,
+      style: sourceElement?.style,
+    });
+    expect(elements[1].id).not.toBe(sourceElement?.id);
   });
 
   it("applies a slide template without changing source image or crop", () => {

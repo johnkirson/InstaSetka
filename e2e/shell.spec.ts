@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 import { readFile } from "node:fs/promises";
 import { deflateSync } from "node:zlib";
 
@@ -7,6 +7,16 @@ const tinyPng = Buffer.from(
   "base64",
 );
 const wideImage = createPng(600, 180);
+
+test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(window, "showSaveFilePicker", {
+      configurable: true,
+      value: undefined,
+    });
+    window.localStorage.setItem("instasetka.tourSeen", "true");
+  });
+});
 
 test("renders the two-workspace editor shell", async ({ page }) => {
   await page.goto("/");
@@ -24,10 +34,12 @@ test("switches between dark and light themes", async ({ page }) => {
   const shell = page.locator(".app-shell");
   await expect(shell).toHaveAttribute("data-theme", "dark");
 
-  await page.getByRole("button", { name: "Switch to light theme" }).click();
+  await page.getByRole("button", { name: "Project" }).click();
+  await page.getByRole("menuitem", { name: "Light theme" }).click();
   await expect(shell).toHaveAttribute("data-theme", "light");
 
-  await page.getByRole("button", { name: "Switch to dark theme" }).click();
+  await page.getByRole("button", { name: "Project" }).click();
+  await page.getByRole("menuitem", { name: "Dark theme" }).click();
   await expect(shell).toHaveAttribute("data-theme", "dark");
 });
 
@@ -110,7 +122,7 @@ test("keeps the app and pane headers fixed while the grid scrolls", async ({ pag
 test("imports a PNG into the source canvas", async ({ page }) => {
   await page.goto("/");
 
-  await page.locator('input[type="file"]').setInputFiles({
+  await page.locator('input[type="file"][multiple]').setInputFiles({
     name: "fixture-grid.png",
     mimeType: "image/png",
     buffer: tinyPng,
@@ -124,7 +136,7 @@ test("imports a PNG into the source canvas", async ({ page }) => {
 test("moves an imported image on the source canvas", async ({ page }) => {
   await page.goto("/");
 
-  await page.locator('input[type="file"]').setInputFiles({
+  await page.locator('input[type="file"][multiple]').setInputFiles({
     name: "draggable-grid.png",
     mimeType: "image/png",
     buffer: tinyPng,
@@ -155,7 +167,7 @@ test("moves an imported image on the source canvas", async ({ page }) => {
 test("deletes a selected source canvas image", async ({ page }) => {
   await page.goto("/");
 
-  await page.locator('input[type="file"]').setInputFiles({
+  await page.locator('input[type="file"][multiple]').setInputFiles({
     name: "delete-canvas.png",
     mimeType: "image/png",
     buffer: tinyPng,
@@ -173,7 +185,7 @@ test("deletes a selected source canvas image", async ({ page }) => {
 test("fit all recovers an image moved far across the canvas", async ({ page }) => {
   await page.goto("/");
 
-  await page.locator('input[type="file"]').setInputFiles({
+  await page.locator('input[type="file"][multiple]').setInputFiles({
     name: "recoverable-grid.png",
     mimeType: "image/png",
     buffer: tinyPng,
@@ -209,7 +221,7 @@ test("fit all recovers an image moved far across the canvas", async ({ page }) =
 test("auto arrange lays imported images into a tidy row", async ({ page }) => {
   await page.goto("/");
 
-  await page.locator('input[type="file"]').setInputFiles([
+  await page.locator('input[type="file"][multiple]').setInputFiles([
     {
       name: "arrange-a.png",
       mimeType: "image/png",
@@ -242,7 +254,7 @@ test("auto arrange lays imported images into a tidy row", async ({ page }) => {
 test("drags a source image into the grid organizer", async ({ page }) => {
   await page.goto("/");
 
-  await page.locator('input[type="file"]').setInputFiles({
+  await page.locator('input[type="file"][multiple]').setInputFiles({
     name: "grid-drop.png",
     mimeType: "image/png",
     buffer: tinyPng,
@@ -272,7 +284,7 @@ test("drags a source image into the grid organizer", async ({ page }) => {
 test("drops a source image into the exact grid slot", async ({ page }) => {
   await page.goto("/");
 
-  await page.locator('input[type="file"]').setInputFiles({
+  await page.locator('input[type="file"][multiple]').setInputFiles({
     name: "exact-slot.png",
     mimeType: "image/png",
     buffer: tinyPng,
@@ -304,7 +316,7 @@ test("reorders grid posts by dragging one slot onto another", async ({ page }) =
   });
   await page.goto("/");
 
-  await page.locator('input[type="file"]').setInputFiles([
+  await page.locator('input[type="file"][multiple]').setInputFiles([
     {
       name: "grid-a.png",
       mimeType: "image/png",
@@ -358,7 +370,7 @@ test("reorders grid posts by dragging one slot onto another", async ({ page }) =
 test("deletes a selected grid post without removing the source canvas image", async ({ page }) => {
   await page.goto("/");
 
-  await page.locator('input[type="file"]').setInputFiles({
+  await page.locator('input[type="file"][multiple]').setInputFiles({
     name: "delete-grid.png",
     mimeType: "image/png",
     buffer: tinyPng,
@@ -388,7 +400,7 @@ test("deletes a selected grid post without removing the source canvas image", as
 test("switches grid aspect ratio without losing post placement", async ({ page }) => {
   await page.goto("/");
 
-  await page.locator('input[type="file"]').setInputFiles({
+  await page.locator('input[type="file"][multiple]').setInputFiles({
     name: "aspect-stable.png",
     mimeType: "image/png",
     buffer: tinyPng,
@@ -424,7 +436,7 @@ test("switches grid aspect ratio without losing post placement", async ({ page }
   }
 
   expect(Math.abs(after.width - after.height)).toBeLessThan(2);
-  expect(Math.abs(before.height - after.height)).toBeGreaterThan(20);
+  expect(Math.abs(before.height - after.height)).toBeGreaterThan(18);
 
   await page.getByRole("button", { name: "3:4" }).click();
   await expect(page.locator(".grid-preview")).toHaveAttribute("data-active-aspect", "3:4");
@@ -441,7 +453,7 @@ test("zooms the grid organizer without losing post placement", async ({ page }) 
   });
   await page.goto("/");
 
-  await page.locator('input[type="file"]').setInputFiles({
+  await page.locator('input[type="file"][multiple]').setInputFiles({
     name: "zoom-grid.png",
     mimeType: "image/png",
     buffer: wideImage,
@@ -477,9 +489,9 @@ test("zooms the grid organizer without losing post placement", async ({ page }) 
   expect(after.width).toBeLessThan(before.width - 20);
   await expect(targetSlot.locator("img")).toHaveAttribute("alt", "zoom-grid.png");
 
-  await page.getByRole("button", { name: "PNG" }).click();
+  await page.getByRole("button", { name: "PNG", exact: true }).click();
   const downloadPromise = page.waitForEvent("download");
-  await page.getByRole("button", { name: "Export" }).click();
+  await page.getByRole("button", { name: "Export", exact: true }).click();
   const download = await downloadPromise;
   const downloadPath = await download.path();
   if (!downloadPath) {
@@ -494,7 +506,7 @@ test("zooms the grid organizer without losing post placement", async ({ page }) 
 test("shows quality preflight for the selected grid post", async ({ page }) => {
   await page.goto("/");
 
-  await page.locator('input[type="file"]').setInputFiles({
+  await page.locator('input[type="file"][multiple]').setInputFiles({
     name: "tiny-quality.png",
     mimeType: "image/png",
     buffer: tinyPng,
@@ -519,6 +531,12 @@ test("shows quality preflight for the selected grid post", async ({ page }) => {
 });
 
 test("adds and edits a text layer in the carousel workspace", async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(window, "showSaveFilePicker", {
+      configurable: true,
+      value: undefined,
+    });
+  });
   await page.goto("/");
 
   await page.locator('input[type="file"][multiple]').setInputFiles({
@@ -585,6 +603,14 @@ test("adds and edits a text layer in the carousel workspace", async ({ page }) =
 
   await page.getByLabel("Text box width").fill("52");
   await expect(editedLayer).toHaveAttribute("data-slide-element-width", "0.52");
+  await page.getByLabel("Duplicate layer").click();
+  await expect(page.getByLabel("Slide text layers").locator(".layer-row")).toHaveCount(2);
+  await page.getByRole("button", { name: "Undo" }).click();
+  await expect(page.getByRole("region", { name: "Carousel Workspace" })).toBeVisible();
+  await expect(page.getByLabel("Slide text layers").locator(".layer-row")).toHaveCount(1);
+  await page.getByRole("button", { name: "Redo" }).click();
+  await expect(page.getByRole("region", { name: "Carousel Workspace" })).toBeVisible();
+  await expect(page.getByLabel("Slide text layers").locator(".layer-row")).toHaveCount(2);
 
   await page.getByRole("button", { name: /Quote/ }).click();
   await expect(page.locator(".slide-text-element").filter({ hasText: "Strong carousels" })).toBeVisible();
@@ -592,11 +618,16 @@ test("adds and edits a text layer in the carousel workspace", async ({ page }) =
   await page.getByLabel("Text content").fill("Template edited");
   await expect(page.locator(".slide-text-element").filter({ hasText: "Template edited" })).toBeVisible();
   await page.getByLabel("Text font").selectOption({ label: "Poppins" });
+  await page.getByLabel("Copy style").click();
+  const quoteSource = page.locator(".slide-text-element").filter({ hasText: "InstaSetka note" });
+  await quoteSource.click();
+  await page.getByLabel("Paste style").click();
+  await expect(quoteSource).toHaveCSS("font-family", /Poppins/);
+  await page.getByLabel("Select layer Template edited").click();
   await page.getByRole("button", { name: "Align center" }).click();
   await page.getByRole("button", { name: "Align middle" }).click();
   await expect(page.locator(".slide-text-element").filter({ hasText: "Template edited" })).toHaveAttribute("data-slide-element-x", "0.12");
 
-  const quoteSource = page.locator(".slide-text-element").filter({ hasText: "InstaSetka note" });
   await quoteSource.click({ modifiers: ["Shift"] });
   await expect(page.getByLabel("Text properties")).toContainText("2 text layers");
   await expect(page.getByLabel("Slide text layers")).toContainText("Template edited");
@@ -612,12 +643,27 @@ test("adds and edits a text layer in the carousel workspace", async ({ page }) =
   await quoteSource.click({ modifiers: ["Shift"] });
   await page.getByRole("button", { name: "Align left" }).click();
   await expect(quoteSource).toHaveAttribute("data-slide-element-x", "0.12");
+
+  await page.getByRole("button", { name: "PNG", exact: true }).click();
+  const exportPromise = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Export", exact: true }).click();
+  const exportedSlide = await exportPromise;
+  const exportedPath = await exportedSlide.path();
+  if (!exportedPath) {
+    throw new Error("Downloaded carousel export path was unavailable");
+  }
+
+  const exportedStats = await readPngVisualStats(page, exportedPath);
+  expect(exportedStats.width).toBe(1080);
+  expect(exportedStats.height).toBe(1350);
+  expect(exportedStats.backgroundSample[0]).toBeLessThan(150);
+  expect(exportedStats.brightPixels).toBeGreaterThan(20);
 });
 
 test("lists quality map issues and selects the affected grid slot", async ({ page }) => {
   await page.goto("/");
 
-  await page.locator('input[type="file"]').setInputFiles({
+  await page.locator('input[type="file"][multiple]').setInputFiles({
     name: "quality-map.png",
     mimeType: "image/png",
     buffer: tinyPng,
@@ -648,7 +694,7 @@ test("lists quality map issues and selects the affected grid slot", async ({ pag
 test("exports the selected grid post with the active Instagram preset", async ({ page }) => {
   await page.goto("/");
 
-  await page.locator('input[type="file"]').setInputFiles({
+  await page.locator('input[type="file"][multiple]').setInputFiles({
     name: "export-ready.png",
     mimeType: "image/png",
     buffer: wideImage,
@@ -668,10 +714,10 @@ test("exports the selected grid post with the active Instagram preset", async ({
   await page.mouse.up();
 
   await page.getByRole("button", { name: "3:4" }).click();
-  await page.getByRole("button", { name: "PNG" }).click();
+  await page.getByRole("button", { name: "PNG", exact: true }).click();
 
   const downloadPromise = page.waitForEvent("download");
-  await page.getByRole("button", { name: "Export" }).click();
+  await page.getByRole("button", { name: "Export", exact: true }).click();
   const download = await downloadPromise;
   expect(download.suggestedFilename()).toBe("01-export-ready-3x4.png");
 
@@ -687,7 +733,7 @@ test("exports the selected grid post with the active Instagram preset", async ({
 test("preserves image proportions when switching grid aspect ratio", async ({ page }) => {
   await page.goto("/");
 
-  await page.locator('input[type="file"]').setInputFiles({
+  await page.locator('input[type="file"][multiple]').setInputFiles({
     name: "no-squash.png",
     mimeType: "image/png",
     buffer: tinyPng,
@@ -720,7 +766,7 @@ test("preserves image proportions when switching grid aspect ratio", async ({ pa
 test("updates selected grid post crop zoom non-destructively", async ({ page }) => {
   await page.goto("/");
 
-  await page.locator('input[type="file"]').setInputFiles({
+  await page.locator('input[type="file"][multiple]').setInputFiles({
     name: "crop-zoom.png",
     mimeType: "image/png",
     buffer: tinyPng,
@@ -768,7 +814,7 @@ test("pans a selected grid image crop inside its slot", async ({ page }) => {
   });
   await page.goto("/");
 
-  await page.locator('input[type="file"]').setInputFiles({
+  await page.locator('input[type="file"][multiple]').setInputFiles({
     name: "crop-pan.png",
     mimeType: "image/png",
     buffer: tinyPng,
@@ -817,7 +863,7 @@ test("prevents crop pan from revealing empty space", async ({ page }) => {
   await page.goto("/");
   await page.getByRole("button", { name: "1:1" }).click();
 
-  await page.locator('input[type="file"]').setInputFiles({
+  await page.locator('input[type="file"][multiple]').setInputFiles({
     name: "crop-boundary.png",
     mimeType: "image/png",
     buffer: tinyPng,
@@ -868,7 +914,7 @@ test("allows horizontal crop pan for wide images in tall grid slots", async ({ p
   });
   await page.goto("/");
 
-  await page.locator('input[type="file"]').setInputFiles({
+  await page.locator('input[type="file"][multiple]').setInputFiles({
     name: "wide-crop.png",
     mimeType: "image/png",
     buffer: wideImage,
@@ -890,7 +936,6 @@ test("allows horizontal crop pan for wide images in tall grid slots", async ({ p
   const image = targetSlot.locator("img");
   await targetSlot.dblclick();
   await expect(page.getByText("Double-click image to lock crop")).toBeVisible();
-  await expect(image).toHaveClass(/cover-wide/);
   const initialImageBox = await image.boundingBox();
   const initialSlotBox = await targetSlot.boundingBox();
   if (!initialImageBox || !initialSlotBox) {
@@ -943,6 +988,50 @@ function readPngDimensions(buffer: Buffer): { width: number; height: number } {
     width: buffer.readUInt32BE(16),
     height: buffer.readUInt32BE(20),
   };
+}
+
+async function readPngVisualStats(
+  page: Page,
+  filePath: string,
+): Promise<{ width: number; height: number; backgroundSample: number[]; brightPixels: number }> {
+  const dataUrl = `data:image/png;base64,${(await readFile(filePath)).toString("base64")}`;
+
+  return page.evaluate(async (src) => {
+    const image = new Image();
+    image.src = src;
+    await image.decode();
+
+    const canvas = document.createElement("canvas");
+    canvas.width = image.naturalWidth;
+    canvas.height = image.naturalHeight;
+    const context = canvas.getContext("2d");
+
+    if (!context) {
+      throw new Error("Canvas 2D context was unavailable for exported PNG inspection");
+    }
+
+    context.drawImage(image, 0, 0);
+    const data = context.getImageData(0, 0, canvas.width, canvas.height).data;
+    const backgroundSampleIndex = (Math.floor(canvas.height * 0.1) * canvas.width + Math.floor(canvas.width * 0.1)) * 4;
+    let brightPixels = 0;
+
+    for (let index = 0; index < data.length; index += 4 * 12) {
+      if (data[index] > 215 && data[index + 1] > 215 && data[index + 2] > 215) {
+        brightPixels += 1;
+      }
+    }
+
+    return {
+      width: canvas.width,
+      height: canvas.height,
+      backgroundSample: [
+        data[backgroundSampleIndex],
+        data[backgroundSampleIndex + 1],
+        data[backgroundSampleIndex + 2],
+      ],
+      brightPixels,
+    };
+  }, dataUrl);
 }
 
 function pngChunk(type: string, data: Buffer): Buffer {

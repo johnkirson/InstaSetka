@@ -196,6 +196,13 @@ h2 {
   padding: 0 12px;
 }
 
+.button.compact {
+  height: 30px;
+  gap: 5px;
+  padding: 0 8px;
+  font-size: 12px;
+}
+
 .button.primary,
 .icon-button.primary {
   border-color: var(--color-accent);
@@ -573,6 +580,7 @@ h2 {
 .carousel-design-editor {
   display: grid;
   grid-template-columns: minmax(220px, 1fr) minmax(210px, 0.44fr);
+  min-height: 0;
   gap: 12px;
   padding: 12px;
 }
@@ -632,6 +640,9 @@ h2 {
   align-content: start;
   gap: 10px;
   min-width: 0;
+  max-height: min(100%, 520px);
+  overflow: auto;
+  padding-right: 2px;
 }
 
 .slide-design-panel-header {
@@ -673,6 +684,8 @@ h2 {
 .template-list {
   display: grid;
   gap: 6px;
+  max-height: 132px;
+  overflow: auto;
 }
 
 .template-card {
@@ -728,6 +741,8 @@ h2 {
 .slide-layer-list {
   display: grid;
   gap: 6px;
+  max-height: 178px;
+  overflow: auto;
   padding: 9px;
   border: 1px solid var(--color-border);
   border-radius: 6px;
@@ -783,9 +798,26 @@ h2 {
   height: 30px;
 }
 
+.button:disabled,
 .icon-button:disabled {
   cursor: not-allowed;
   opacity: 0.42;
+}
+
+.layer-action-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.layer-action-row .button {
+  justify-content: center;
+  min-width: 0;
+  white-space: nowrap;
+}
+
+.layer-action-row .button:last-child {
+  grid-column: 1 / -1;
 }
 
 .design-field,
@@ -814,7 +846,7 @@ h2 {
 }
 
 .design-field textarea {
-  min-height: 76px;
+  min-height: 64px;
   resize: vertical;
   padding: 8px;
 }

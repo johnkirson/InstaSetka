@@ -525,6 +525,41 @@ export function removeSlideElement(project: Project, slideId: string, elementId:
   };
 }
 
+export function duplicateSlideElement(project: Project, slideId: string, elementId: string): Project {
+  return {
+    ...touch(project),
+    posts: project.posts.map((post) => ({
+      ...post,
+      slides: post.slides.map((slide) => {
+        if (slide.id !== slideId) {
+          return slide;
+        }
+
+        const elements = slide.elements ?? [];
+        const elementIndex = elements.findIndex((element) => element.id === elementId);
+        const sourceElement = elements[elementIndex];
+
+        if (!sourceElement) {
+          return slide;
+        }
+
+        const duplicatedElement: SlideElement = {
+          ...cloneSlideElement(sourceElement),
+          x: Number(Math.min(1 - sourceElement.width, sourceElement.x + 0.04).toFixed(4)),
+          y: Number(Math.min(1 - sourceElement.height, sourceElement.y + 0.04).toFixed(4)),
+        };
+        const nextElements = [...elements];
+        nextElements.splice(elementIndex + 1, 0, duplicatedElement);
+
+        return {
+          ...slide,
+          elements: nextElements,
+        };
+      }),
+    })),
+  };
+}
+
 export function moveSlideElement(project: Project, slideId: string, elementId: string, toIndex: number): Project {
   return {
     ...touch(project),
