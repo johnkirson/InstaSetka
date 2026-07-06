@@ -1709,12 +1709,13 @@ export function App() {
         ...selectedSlide.crop,
         ...cropPatch,
       };
-      const slotElement =
-        selectedGridSlotIndex === null
+      const slideElement = carouselMode
+        ? document.querySelector<HTMLElement>(".slide-design-canvas")
+        : selectedGridSlotIndex === null
           ? null
           : document.querySelector<HTMLElement>(`[data-grid-slot-index="${selectedGridSlotIndex}"]`);
-      const imageElement = slotElement?.querySelector("img");
-      const slotSize = slotElement ? getUnscaledElementSize(slotElement) : null;
+      const imageElement = slideElement?.querySelector("img");
+      const slotSize = slideElement ? getUnscaledElementSize(slideElement) : null;
       const clampedOffset =
         slotSize && imageElement?.naturalWidth && imageElement.naturalHeight
           ? clampCropOffset(
@@ -1907,8 +1908,11 @@ export function App() {
   }
 
   function clearSlideTextInteraction() {
-    commitInlineSlideTextEdit();
-    setSelectedSlideElementIds([]);
+    if (editingSlideElementId) {
+      commitInlineSlideTextEdit();
+    }
+
+    setSelectedSlideElementIds((currentIds) => (currentIds.length > 0 ? [] : currentIds));
   }
 
   function toggleCarouselCropEditing() {
@@ -3207,11 +3211,7 @@ export function App() {
                   </div>
                 </div>
                 {selectedSlide ? (
-                  <div
-                    className="slide-crop-strip"
-                    aria-label="Carousel crop controls"
-                    onPointerDownCapture={clearSlideTextInteraction}
-                  >
+                  <div className="slide-crop-strip" aria-label="Carousel crop controls">
                     <button
                       className={`button secondary compact ${carouselCropEditing ? "is-active" : ""}`}
                       onClick={toggleCarouselCropEditing}
