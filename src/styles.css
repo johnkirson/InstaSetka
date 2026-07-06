@@ -645,6 +645,8 @@ h2 {
 }
 
 .slide-crop-strip {
+  position: relative;
+  z-index: 12;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -654,6 +656,7 @@ h2 {
   border: 1px solid var(--color-border);
   border-radius: 6px;
   background: var(--color-surface-alt);
+  pointer-events: auto;
 }
 
 .slide-crop-strip label {
@@ -663,6 +666,12 @@ h2 {
   gap: 8px;
   color: var(--color-muted);
   font-size: 12px;
+}
+
+.slide-crop-strip button,
+.slide-crop-strip input,
+.slide-crop-strip label {
+  pointer-events: auto;
 }
 
 .slide-crop-strip input[type="range"] {
@@ -676,6 +685,8 @@ h2 {
 }
 
 .slide-editor-stage {
+  position: relative;
+  z-index: 1;
   display: flex;
   align-items: center;
   min-height: 0;

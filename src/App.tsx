@@ -1926,9 +1926,15 @@ export function App() {
   }
 
   function handleSlideWorkspacePointerDown(event: ReactPointerEvent<HTMLElement>) {
+    if (event.target === event.currentTarget) {
+      clearSlideTextInteraction();
+    }
+  }
+
+  function handleSlideCanvasPointerDown(event: ReactPointerEvent<HTMLDivElement>) {
     const target = event.target as HTMLElement;
 
-    if (target.closest(".slide-text-element, .text-context-toolbar")) {
+    if (carouselCropEditing || target.closest(".slide-text-element")) {
       return;
     }
 
@@ -3211,7 +3217,11 @@ export function App() {
                   </div>
                 </div>
                 {selectedSlide ? (
-                  <div className="slide-crop-strip" aria-label="Carousel crop controls">
+                  <div
+                    className="slide-crop-strip"
+                    aria-label="Carousel crop controls"
+                    onPointerDown={(event) => event.stopPropagation()}
+                  >
                     <button
                       className={`button secondary compact ${carouselCropEditing ? "is-active" : ""}`}
                       onClick={toggleCarouselCropEditing}
@@ -3243,7 +3253,7 @@ export function App() {
                     </button>
                   </div>
                 ) : null}
-                <div className="slide-editor-stage" onPointerDownCapture={handleSlideWorkspacePointerDown}>
+                <div className="slide-editor-stage" onPointerDown={handleSlideWorkspacePointerDown}>
                   <div className="slide-background-controls" aria-label="Background controls">
                     <label className="design-field">
                       Dim
@@ -3277,7 +3287,7 @@ export function App() {
                           "--slide-aspect": cssAspectByMode[activeAspectRatio],
                         } as CSSProperties
                       }
-                      onClick={clearSlideTextInteraction}
+                      onPointerDown={handleSlideCanvasPointerDown}
                     >
                       {selectedSlidePreviewUrl && selectedSlideAsset && selectedSlide ? (
                         <img
