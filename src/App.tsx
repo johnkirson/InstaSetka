@@ -121,6 +121,8 @@ const cssAspectByMode: Record<AspectRatio, string> = {
 const themeStorageKey = "instasetka.theme";
 const workspaceSplitStorageKey = "instasetka.workspaceSplit";
 const gridZoomStorageKey = "instasetka.gridZoom";
+const carouselEditorZoomStorageKey = "instasetka.carouselEditorZoom";
+const carouselUserTemplatesStorageKey = "instasetka.carouselUserTemplates";
 const tourSeenStorageKey = "instasetka.tourSeen";
 const minWorkspaceSplit = 34;
 const maxWorkspaceSplit = 72;
@@ -323,6 +325,11 @@ type GridDropHint = {
 
 type TourMode = "quick" | "advanced";
 
+type UserCarouselSlideTemplate = CarouselSlideTemplate & {
+  background?: Slide["background"];
+  createdAt: string;
+};
+
 type WritableFileHandle = {
   createWritable: () => Promise<{
     write: (blob: Blob) => Promise<void>;
@@ -377,6 +384,17 @@ export function App() {
   const [selectedCarouselSlideId, setSelectedCarouselSlideId] = useState<string | null>(null);
   const [selectedSlideElementIds, setSelectedSlideElementIds] = useState<string[]>([]);
   const [copiedSlideTextStyle, setCopiedSlideTextStyle] = useState<SlideTextStyle | null>(null);
+  const [carouselTemplatePanelOpen, setCarouselTemplatePanelOpen] = useState(false);
+  const [carouselLayersPanelOpen, setCarouselLayersPanelOpen] = useState(false);
+  const [carouselTextDetailsOpen, setCarouselTextDetailsOpen] = useState(false);
+  const [carouselCropEditing, setCarouselCropEditing] = useState(false);
+  const [carouselEditorZoom, setCarouselEditorZoom] = useState(() => {
+    const savedZoom = Number(window.localStorage.getItem(carouselEditorZoomStorageKey));
+    return Number.isFinite(savedZoom) ? clamp(savedZoom, 0.55, 1.6) : 1;
+  });
+  const [userCarouselTemplates, setUserCarouselTemplates] = useState<UserCarouselSlideTemplate[]>(() =>
+    loadUserCarouselTemplates(),
+  );
   const [carouselEditorPostId, setCarouselEditorPostId] = useState<string | null>(null);
   const [draggingGridSlotIndex, setDraggingGridSlotIndex] = useState<number | null>(null);
   const [draggingCarouselSlideIndex, setDraggingCarouselSlideIndex] = useState<number | null>(null);
@@ -572,7 +590,16 @@ export function App() {
         setExportFormat(restoredSession.exportFormat);
         setCanvasView(restoredSession.canvasView);
         setGridZoom(clamp(restoredSession.gridZoom, 0.35, 1.4));
-        setWorkspaceSplit(clamp(restoredSession.workspaceSplit, minWorkspaceSplit, maxWorkspaceSplit));
+        {
+          const savedSplit = Number(window.localStorage.getItem(workspaceSplitStorageKey));
+          setWorkspaceSplit(
+            clamp(
+              Number.isFinite(savedSplit) ? savedSplit : restoredSession.workspaceSplit,
+              minWorkspaceSplit,
+              maxWorkspaceSplit,
+            ),
+          );
+        }
         setPreviewUrls((current) => {
           revokePreviewUrls(current);
           return restoredPreviewUrls;
@@ -655,6 +682,18 @@ export function App() {
   useEffect(() => {
     window.localStorage.setItem(gridZoomStorageKey, String(gridZoom));
   }, [gridZoom]);
+
+  useEffect(() => {
+    window.localStorage.setItem(carouselEditorZoomStorageKey, String(carouselEditorZoom));
+  }, [carouselEditorZoom]);
+
+  useEffect(() => {
+    window.localStorage.setItem(carouselUserTemplatesStorageKey, JSON.stringify(userCarouselTemplates));
+  }, [userCarouselTemplates]);
+
+  useEffect(() => {
+    setCarouselCropEditing(false);
+  }, [selectedSlide?.id]);
 
   useEffect(() => {
     if (!projectMenuOpen && !exportMenuOpen) {
@@ -1803,6 +1842,7 @@ export function App() {
       return;
     }
 
+    setCarouselCropEditing(false);
     commitProjectChange((currentProject) => addTextElementToSlide(currentProject, selectedSlide.id));
   }
 
@@ -1915,6 +1955,52 @@ export function App() {
     setSelectedSlideElementIds([]);
   }
 
+  function applyUserTemplateToSelectedSlide(template: UserCarouselSlideTemplate) {
+    if (!selectedSlide) {
+      return;
+    }
+
+    commitProjectChange((currentProject) => {
+      const templatedProject = applySlideTemplate(currentProject, selectedSlide.id, template);
+      return updateSlideBackground(templatedProject, selectedSlide.id, {
+        overlayOpacity: template.background?.overlayOpacity ?? 0,
+      });
+    });
+    setSelectedSlideElementIds([]);
+  }
+
+  function saveSelectedSlideAsTemplate() {
+    if (!selectedSlide) {
+      return;
+    }
+
+    const name = window.prompt("Template name", `Template ${userCarouselTemplates.length + 1}`)?.trim();
+
+    if (!name) {
+      return;
+    }
+
+    const template: UserCarouselSlideTemplate = {
+      id: `user-template-${crypto.randomUUID()}`,
+      name,
+      description: `${selectedSlide.elements?.length ?? 0} text layer${selectedSlide.elements?.length === 1 ? "" : "s"}`,
+      elements: (selectedSlide.elements ?? []).map(cloneSlideElementForTemplate),
+      background: selectedSlide.background
+        ? {
+            ...selectedSlide.background,
+          }
+        : undefined,
+      createdAt: new Date().toISOString(),
+    };
+
+    setUserCarouselTemplates((currentTemplates) => [template, ...currentTemplates]);
+    setCarouselTemplatePanelOpen(true);
+  }
+
+  function deleteUserCarouselTemplate(templateId: string) {
+    setUserCarouselTemplates((currentTemplates) => currentTemplates.filter((template) => template.id !== templateId));
+  }
+
   function deleteSelectedSlideElement() {
     if (!selectedSlide || selectedSlideElements.length === 0) {
       return;
@@ -1981,6 +2067,8 @@ export function App() {
   }
 
   function selectSlideElement(elementId: string, additive: boolean) {
+    setCarouselCropEditing(false);
+
     if (!additive) {
       setSelectedSlideElementIds([elementId]);
       return;
@@ -2061,6 +2149,77 @@ export function App() {
           });
         }, currentProject),
       );
+    }
+
+    function handlePointerUp() {
+      window.removeEventListener("pointermove", handlePointerMove);
+      window.removeEventListener("pointerup", handlePointerUp);
+    }
+
+    window.addEventListener("pointermove", handlePointerMove);
+    window.addEventListener("pointerup", handlePointerUp, { once: true });
+  }
+
+  function handleCarouselCropPointerDown(event: ReactPointerEvent<HTMLImageElement>) {
+    if (!selectedSlide || !carouselCropEditing) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    rememberProjectForUndo();
+    const imageElement = event.currentTarget;
+    const canvasElement = imageElement.closest<HTMLElement>(".slide-design-canvas");
+    const slideId = selectedSlide.id;
+    let previous = {
+      x: event.clientX,
+      y: event.clientY,
+    };
+
+    function handlePointerMove(moveEvent: PointerEvent) {
+      const delta = {
+        x: (moveEvent.clientX - previous.x) / carouselEditorZoom,
+        y: (moveEvent.clientY - previous.y) / carouselEditorZoom,
+      };
+      previous = {
+        x: moveEvent.clientX,
+        y: moveEvent.clientY,
+      };
+
+      setProject((currentProject) => {
+        const post = getPostBySlideId(currentProject, slideId);
+        const slide = post?.slides.find((candidate) => candidate.id === slideId);
+        if (!slide) {
+          return currentProject;
+        }
+
+        const canvasSize = canvasElement ? getUnscaledElementSize(canvasElement) : null;
+        const unclampedOffset = {
+          x: slide.crop.x + delta.x,
+          y: slide.crop.y + delta.y,
+        };
+        const offset =
+          canvasSize && imageElement.naturalWidth && imageElement.naturalHeight
+            ? clampCropOffset(
+                {
+                  slotWidth: canvasSize.width,
+                  slotHeight: canvasSize.height,
+                  imageWidth: imageElement.naturalWidth,
+                  imageHeight: imageElement.naturalHeight,
+                  scale: slide.crop.scale,
+                  rotation: slide.crop.rotation,
+                },
+                unclampedOffset,
+              )
+            : unclampedOffset;
+
+        return setSlideCrop(currentProject, slideId, {
+          ...slide.crop,
+          x: offset.x,
+          y: offset.y,
+        });
+      });
     }
 
     function handlePointerUp() {
@@ -2824,91 +2983,195 @@ export function App() {
                 })}
               </section>
               <section className="carousel-design-editor" aria-label="Carousel slide editor">
-                <div
-                  className="slide-design-canvas"
-                  data-active-aspect={activeAspectRatio}
-                  style={{ "--slide-aspect": cssAspectByMode[activeAspectRatio] } as CSSProperties}
-                  onClick={() => setSelectedSlideElementIds([])}
-                >
-                  {selectedSlidePreviewUrl && selectedSlideAsset && selectedSlide ? (
-                    <img
-                      className="slide-design-image"
-                      src={selectedSlidePreviewUrl}
-                      alt={selectedSlideAsset.name}
-                      style={getGridImageStyle(selectedSlide.crop, selectedSlideAsset, activeAspectRatio)}
-                    />
-                  ) : (
-                    <div className="image-placeholder" />
-                  )}
-                  {selectedSlide ? (
-                    <div
-                      className="slide-design-overlay"
-                      data-overlay-opacity={selectedSlide.background?.overlayOpacity ?? 0}
-                      style={{ opacity: selectedSlide.background?.overlayOpacity ?? 0 }}
-                    />
-                  ) : null}
-                  {selectedSlide?.elements?.map((element) => (
+                <div className="slide-editor-toolbar" aria-label="Carousel design tools">
+                  <button className="button secondary compact" onClick={addTextToSelectedSlide}>
+                    <Plus size={14} />
+                    Text
+                  </button>
+                  <div className="slide-toolbar-menu">
                     <button
-                      className={`slide-text-element ${
-                        selectedSlideElementIds.includes(element.id) ? "is-selected" : ""
-                      }`}
-                      key={element.id}
-                      aria-pressed={selectedSlideElementIds.includes(element.id)}
-                      data-slide-element-id={element.id}
-                      data-slide-element-x={element.x}
-                      data-slide-element-y={element.y}
-                      data-slide-element-width={element.width}
-                      data-slide-element-height={element.height}
-                      style={getSlideElementStyle(element)}
-                      onPointerDown={(event) => handleSlideElementPointerDown(event, element)}
-                      onClick={(event) => {
-                        event.stopPropagation();
+                      className="button secondary compact"
+                      aria-expanded={carouselTemplatePanelOpen}
+                      aria-haspopup="menu"
+                      onClick={() => {
+                        setCarouselTemplatePanelOpen((open) => !open);
+                        setCarouselLayersPanelOpen(false);
                       }}
                     >
-                      {element.content}
+                      Template
+                      <ChevronDown size={14} />
                     </button>
-                  ))}
+                    {carouselTemplatePanelOpen ? (
+                      <div className="slide-popover template-popover" role="menu" aria-label="Slide templates">
+                        <div className="template-picker-header">
+                          <span>Templates</span>
+                          {selectedSlide?.templateId ? (
+                            <em>{carouselSlideTemplates.find((template) => template.id === selectedSlide.templateId)?.name}</em>
+                          ) : null}
+                        </div>
+                        <div className="template-list">
+                          {carouselSlideTemplates.map((template) => (
+                            <button
+                              className={`template-card ${selectedSlide?.templateId === template.id ? "is-active" : ""}`}
+                              key={template.id}
+                              role="menuitem"
+                              onClick={() => {
+                                applyTemplateToSelectedSlide(template);
+                                setCarouselTemplatePanelOpen(false);
+                              }}
+                            >
+                              <span>{template.name}</span>
+                              <small>{template.description}</small>
+                            </button>
+                          ))}
+                        </div>
+                        <div className="template-picker-header">
+                          <span>My templates</span>
+                          <button className="button secondary compact" onClick={saveSelectedSlideAsTemplate}>
+                            <Save size={14} />
+                            Save
+                          </button>
+                        </div>
+                        <div className="template-list">
+                          {userCarouselTemplates.length ? (
+                            userCarouselTemplates.map((template) => (
+                              <div className="template-card-row" key={template.id}>
+                                <button
+                                  className={`template-card ${selectedSlide?.templateId === template.id ? "is-active" : ""}`}
+                                  role="menuitem"
+                                  onClick={() => {
+                                    applyUserTemplateToSelectedSlide(template);
+                                    setCarouselTemplatePanelOpen(false);
+                                  }}
+                                >
+                                  <span>{template.name}</span>
+                                  <small>{template.description}</small>
+                                </button>
+                                <button
+                                  className="icon-button compact"
+                                  aria-label={`Delete template ${template.name}`}
+                                  onClick={() => deleteUserCarouselTemplate(template.id)}
+                                >
+                                  <Trash2 size={14} />
+                                </button>
+                              </div>
+                            ))
+                          ) : (
+                            <p className="design-empty">No saved templates yet.</p>
+                          )}
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
+                  <div className="slide-toolbar-menu">
+                    <button
+                      className="button secondary compact"
+                      aria-expanded={carouselLayersPanelOpen}
+                      aria-haspopup="dialog"
+                      onClick={() => {
+                        setCarouselLayersPanelOpen((open) => !open);
+                        setCarouselTemplatePanelOpen(false);
+                      }}
+                    >
+                      Layers
+                      <span className="tool-count">{selectedSlide?.elements?.length ?? 0}</span>
+                    </button>
+                    {carouselLayersPanelOpen ? (
+                      <div className="slide-popover layers-popover">
+                        <div className="slide-layer-list" aria-label="Slide text layers">
+                          <div className="slide-layer-list-header">
+                            <span>Layers</span>
+                            <em>{selectedSlide?.elements?.length ?? 0}</em>
+                          </div>
+                          {selectedSlide?.elements?.length ? (
+                            selectedSlide.elements.map((element, index) => {
+                              const label = getSlideElementLabel(element, index);
+                              const isSelected = selectedSlideElementIds.includes(element.id);
+
+                              return (
+                                <div className={`layer-row ${isSelected ? "is-selected" : ""}`} key={element.id}>
+                                  <button
+                                    className="layer-select"
+                                    aria-label={`Select layer ${label}`}
+                                    aria-pressed={isSelected}
+                                    onClick={(event) => selectSlideElement(element.id, event.shiftKey || event.ctrlKey || event.metaKey)}
+                                  >
+                                    <span>{label}</span>
+                                  </button>
+                                  <button
+                                    className="icon-button compact"
+                                    aria-label="Move layer up"
+                                    disabled={index === 0}
+                                    onClick={() => moveSelectedSlideLayer(element.id, -1)}
+                                  >
+                                    <ArrowUp size={14} />
+                                  </button>
+                                  <button
+                                    className="icon-button compact"
+                                    aria-label="Move layer down"
+                                    disabled={index === (selectedSlide.elements?.length ?? 0) - 1}
+                                    onClick={() => moveSelectedSlideLayer(element.id, 1)}
+                                  >
+                                    <ArrowDown size={14} />
+                                  </button>
+                                </div>
+                              );
+                            })
+                          ) : (
+                            <p className="design-empty">No text layers yet.</p>
+                          )}
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
+                  <div className="segmented compact slide-zoom-control" aria-label="Carousel editor zoom">
+                    <button onClick={() => setCarouselEditorZoom((current) => clamp(Number((current - 0.1).toFixed(2)), 0.55, 1.6))}>
+                      -
+                    </button>
+                    <span>{Math.round(carouselEditorZoom * 100)}%</span>
+                    <button onClick={() => setCarouselEditorZoom((current) => clamp(Number((current + 0.1).toFixed(2)), 0.55, 1.6))}>
+                      +
+                    </button>
+                    <button onClick={() => setCarouselEditorZoom(1)}>Reset</button>
+                  </div>
                 </div>
-                <aside className="slide-design-panel" aria-label="Text properties">
-                  <div className="slide-design-panel-header">
-                    <div>
-                      <p className="eyebrow">Design</p>
-                      <strong>
-                        {selectedSlideElements.length > 1
-                          ? `${selectedSlideElements.length} text layers`
-                          : selectedSlideElement
-                            ? "Text layer"
-                            : "Slide tools"}
-                      </strong>
-                    </div>
-                    <button className="button secondary" onClick={addTextToSelectedSlide}>
-                      <Plus size={16} />
-                      Text
+                {selectedSlide ? (
+                  <div className="slide-crop-strip" aria-label="Carousel crop controls">
+                    <button
+                      className={`button secondary compact ${carouselCropEditing ? "is-active" : ""}`}
+                      onClick={() => setCarouselCropEditing((current) => !current)}
+                    >
+                      <ScanLine size={14} />
+                      {carouselCropEditing ? "Pan on" : "Pan"}
+                    </button>
+                    <label>
+                      Crop
+                      <input
+                        aria-label="Slide crop zoom"
+                        type="range"
+                        min="1"
+                        max="3"
+                        step="0.05"
+                        value={selectedSlide.crop.scale}
+                        onChange={(event) => updateSelectedCrop({ scale: Number(event.target.value) })}
+                      />
+                      <span>{Math.round(selectedSlide.crop.scale * 100)}%</span>
+                    </label>
+                    <button className="button secondary compact" onClick={resetSelectedCrop}>
+                      Reset
+                    </button>
+                    <button className="icon-button compact" aria-label="Rotate slide image left" onClick={() => rotateSelectedCrop(-1)}>
+                      <RotateCcw size={14} />
+                    </button>
+                    <button className="icon-button compact" aria-label="Rotate slide image right" onClick={() => rotateSelectedCrop(1)}>
+                      <RotateCw size={14} />
                     </button>
                   </div>
-                  <div className="template-picker" aria-label="Slide templates">
-                    <div className="template-picker-header">
-                      <span>Templates</span>
-                      {selectedSlide?.templateId ? (
-                        <em>{carouselSlideTemplates.find((template) => template.id === selectedSlide.templateId)?.name}</em>
-                      ) : null}
-                    </div>
-                    <div className="template-list">
-                      {carouselSlideTemplates.map((template) => (
-                        <button
-                          className={`template-card ${selectedSlide?.templateId === template.id ? "is-active" : ""}`}
-                          key={template.id}
-                          onClick={() => applyTemplateToSelectedSlide(template)}
-                        >
-                          <span>{template.name}</span>
-                          <small>{template.description}</small>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
+                ) : null}
+                <div className="slide-editor-stage">
                   <div className="slide-background-controls" aria-label="Background controls">
                     <label className="design-field">
-                      Background dim
+                      Dim
                       <input
                         aria-label="Background dim"
                         max="85"
@@ -2920,80 +3183,87 @@ export function App() {
                     </label>
                     <span>{Math.round((selectedSlide?.background?.overlayOpacity ?? 0) * 100)}%</span>
                   </div>
-                  <div className="slide-layer-list" aria-label="Slide text layers">
-                    <div className="slide-layer-list-header">
-                      <span>Layers</span>
-                      <em>{selectedSlide?.elements?.length ?? 0}</em>
-                    </div>
-                    {selectedSlide?.elements?.length ? (
-                      selectedSlide.elements.map((element, index) => {
-                        const label = getSlideElementLabel(element, index);
-                        const isSelected = selectedSlideElementIds.includes(element.id);
-
-                        return (
-                          <div className={`layer-row ${isSelected ? "is-selected" : ""}`} key={element.id}>
-                            <button
-                              className="layer-select"
-                              aria-label={`Select layer ${label}`}
-                              aria-pressed={isSelected}
-                              onClick={(event) => selectSlideElement(element.id, event.shiftKey || event.ctrlKey || event.metaKey)}
-                            >
-                              <span>{label}</span>
-                            </button>
-                            <button
-                              className="icon-button compact"
-                              aria-label="Move layer up"
-                              disabled={index === 0}
-                              onClick={() => moveSelectedSlideLayer(element.id, -1)}
-                            >
-                              <ArrowUp size={14} />
-                            </button>
-                            <button
-                              className="icon-button compact"
-                              aria-label="Move layer down"
-                              disabled={index === (selectedSlide.elements?.length ?? 0) - 1}
-                              onClick={() => moveSelectedSlideLayer(element.id, 1)}
-                            >
-                              <ArrowDown size={14} />
-                            </button>
-                          </div>
-                        );
-                      })
-                    ) : (
-                      <p className="design-empty">No text layers yet.</p>
-                    )}
-                  </div>
-                  {selectedSlideElement ? (
-                    <>
-                      <div className="layer-action-row" aria-label="Selected layer actions">
-                        <button className="button secondary compact" aria-label="Duplicate layer" onClick={duplicateSelectedSlideElement}>
-                          <Files size={14} />
-                          Duplicate
-                        </button>
-                        <button className="button secondary compact" aria-label="Copy style" onClick={copySelectedSlideElementStyle}>
-                          <Copy size={14} />
-                          Copy style
-                        </button>
-                        <button
-                          className="button secondary compact"
-                          aria-label="Paste style"
-                          disabled={!copiedSlideTextStyle}
-                          onClick={pasteCopiedSlideElementStyle}
-                        >
-                          Paste style
-                        </button>
-                      </div>
-                      <label className="design-field">
-                        Content
-                        <textarea
-                          aria-label="Text content"
-                          value={selectedSlideElement.content}
-                          onChange={(event) => updateSelectedSlideElementContent(event.target.value)}
+                  <div className="slide-canvas-shell">
+                    <div
+                      className="slide-design-canvas"
+                      data-active-aspect={activeAspectRatio}
+                      data-crop-editing={carouselCropEditing ? "true" : "false"}
+                      data-editor-zoom={carouselEditorZoom.toFixed(2)}
+                      style={
+                        {
+                          "--slide-aspect": cssAspectByMode[activeAspectRatio],
+                          "--slide-zoom": carouselEditorZoom,
+                        } as CSSProperties
+                      }
+                      onClick={() => setSelectedSlideElementIds([])}
+                    >
+                      {selectedSlidePreviewUrl && selectedSlideAsset && selectedSlide ? (
+                        <img
+                          className="slide-design-image"
+                          src={selectedSlidePreviewUrl}
+                          alt={selectedSlideAsset.name}
+                          data-crop-x={selectedSlide.crop.x}
+                          data-crop-y={selectedSlide.crop.y}
+                          onPointerDown={handleCarouselCropPointerDown}
+                          style={getGridImageStyle(selectedSlide.crop, selectedSlideAsset, activeAspectRatio)}
                         />
-                      </label>
-                      <div className="design-field-row">
-                        <label className="design-field">
-                          Size
+                      ) : (
+                        <div className="image-placeholder" />
+                      )}
+                      {selectedSlide ? (
+                        <div
+                          className="slide-design-overlay"
+                          data-overlay-opacity={selectedSlide.background?.overlayOpacity ?? 0}
+                          style={{ opacity: selectedSlide.background?.overlayOpacity ?? 0 }}
+                        />
+                      ) : null}
+                      {selectedSlide?.elements?.map((element) => (
+                        <button
+                          className={`slide-text-element ${
+                            selectedSlideElementIds.includes(element.id) ? "is-selected" : ""
+                          }`}
+                          key={element.id}
+                          aria-pressed={selectedSlideElementIds.includes(element.id)}
+                          data-slide-element-id={element.id}
+                          data-slide-element-x={element.x}
+                          data-slide-element-y={element.y}
+                          data-slide-element-width={element.width}
+                          data-slide-element-height={element.height}
+                          style={getSlideElementStyle(element)}
+                          onPointerDown={(event) => handleSlideElementPointerDown(event, element)}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                          }}
+                        >
+                          {element.content}
+                        </button>
+                      ))}
+                    </div>
+                    {selectedSlideElement ? (
+                      <div className="text-context-toolbar" aria-label="Text properties">
+                        <div className="text-context-summary">
+                          <strong>{selectedSlideElements.length > 1 ? `${selectedSlideElements.length} text layers` : "Text layer"}</strong>
+                          <button
+                            className="button secondary compact"
+                            aria-expanded={carouselTextDetailsOpen}
+                            onClick={() => setCarouselTextDetailsOpen((open) => !open)}
+                          >
+                            More
+                            <ChevronDown size={14} />
+                          </button>
+                        </div>
+                        <div className="text-quick-controls">
+                          <select
+                            aria-label="Text font"
+                            value={selectedSlideElement.style.fontFamily}
+                            onChange={(event) => updateSelectedSlideElementStyle({ fontFamily: event.target.value })}
+                          >
+                            {googleFontOptions.map((font) => (
+                              <option key={font.family} value={font.stack}>
+                                {font.label}
+                              </option>
+                            ))}
+                          </select>
                           <input
                             aria-label="Text size"
                             min="28"
@@ -3004,109 +3274,120 @@ export function App() {
                               updateSelectedSlideElementStyle({ fontSize: Number(event.target.value) || 72 })
                             }
                           />
-                        </label>
-                        <label className="design-field">
-                          Color
                           <input
                             aria-label="Text color"
                             type="color"
                             value={selectedSlideElement.style.color}
                             onChange={(event) => updateSelectedSlideElementStyle({ color: event.target.value })}
                           />
-                        </label>
-                      </div>
-                      <label className="design-field">
-                        Font
-                        <select
-                          aria-label="Text font"
-                          value={selectedSlideElement.style.fontFamily}
-                          onChange={(event) => updateSelectedSlideElementStyle({ fontFamily: event.target.value })}
-                        >
-                          {googleFontOptions.map((font) => (
-                            <option key={font.family} value={font.stack}>
-                              {font.label}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                      <div className="design-field-row">
-                        <label className="design-field">
-                          Width %
-                          <input
-                            aria-label="Text box width"
-                            min="20"
-                            max="100"
-                            type="number"
-                            value={Math.round(selectedSlideElement.width * 100)}
-                            onChange={(event) => {
-                              const width = clamp((Number(event.target.value) || 20) / 100, 0.2, 1);
-                              updateSelectedSlideElementLayout({
-                                width,
-                                x: clamp(selectedSlideElement.x, 0, 1 - width),
-                              });
-                            }}
-                          />
-                        </label>
-                        <label className="design-field">
-                          Height %
-                          <input
-                            aria-label="Text box height"
-                            min="8"
-                            max="60"
-                            type="number"
-                            value={Math.round(selectedSlideElement.height * 100)}
-                            onChange={(event) => {
-                              const height = clamp((Number(event.target.value) || 8) / 100, 0.08, 0.6);
-                              updateSelectedSlideElementLayout({
-                                height,
-                                y: clamp(selectedSlideElement.y, 0, 1 - height),
-                              });
-                            }}
-                          />
-                        </label>
-                      </div>
-                      <div className="segmented compact" aria-label="Text align">
-                        {(["left", "center", "right"] as const).map((alignment) => (
-                          <button
-                            className={selectedSlideElement.style.textAlign === alignment ? "is-active" : ""}
-                            key={alignment}
-                            onClick={() => updateSelectedSlideElementStyle({ textAlign: alignment })}
-                          >
-                            {alignment[0].toUpperCase()}
+                          <div className="segmented compact" aria-label="Text align">
+                            {(["left", "center", "right"] as const).map((alignment) => (
+                              <button
+                                className={selectedSlideElement.style.textAlign === alignment ? "is-active" : ""}
+                                key={alignment}
+                                onClick={() => updateSelectedSlideElementStyle({ textAlign: alignment })}
+                              >
+                                {alignment[0].toUpperCase()}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                        <div className="layer-action-row" aria-label="Selected layer actions">
+                          <button className="button secondary compact" aria-label="Duplicate layer" onClick={duplicateSelectedSlideElement}>
+                            <Files size={14} />
+                            Duplicate
                           </button>
-                        ))}
-                      </div>
-                      <div className="alignment-tools" aria-label="Align text block">
-                        {[
-                          ["left", "Left"],
-                          ["center", "Center"],
-                          ["right", "Right"],
-                          ["top", "Top"],
-                          ["middle", "Middle"],
-                          ["bottom", "Bottom"],
-                        ].map(([alignment, label]) => (
-                          <button
-                            aria-label={`Align ${label.toLowerCase()}`}
-                            key={alignment}
-                            onClick={() =>
-                              alignSelectedSlideElement(
-                                alignment as "left" | "center" | "right" | "top" | "middle" | "bottom",
-                              )
-                            }
-                          >
-                            {label}
+                          <button className="button secondary compact" aria-label="Copy style" onClick={copySelectedSlideElementStyle}>
+                            <Copy size={14} />
+                            Copy style
                           </button>
-                        ))}
+                          <button
+                            className="button secondary compact"
+                            aria-label="Paste style"
+                            disabled={!copiedSlideTextStyle}
+                            onClick={pasteCopiedSlideElementStyle}
+                          >
+                            Paste style
+                          </button>
+                        </div>
+                        {carouselTextDetailsOpen ? (
+                          <div className="text-details-panel">
+                            <label className="design-field">
+                              Content
+                              <textarea
+                                aria-label="Text content"
+                                value={selectedSlideElement.content}
+                                onChange={(event) => updateSelectedSlideElementContent(event.target.value)}
+                              />
+                            </label>
+                            <div className="design-field-row">
+                              <label className="design-field">
+                                Width %
+                                <input
+                                  aria-label="Text box width"
+                                  min="20"
+                                  max="100"
+                                  type="number"
+                                  value={Math.round(selectedSlideElement.width * 100)}
+                                  onChange={(event) => {
+                                    const width = clamp((Number(event.target.value) || 20) / 100, 0.2, 1);
+                                    updateSelectedSlideElementLayout({
+                                      width,
+                                      x: clamp(selectedSlideElement.x, 0, 1 - width),
+                                    });
+                                  }}
+                                />
+                              </label>
+                              <label className="design-field">
+                                Height %
+                                <input
+                                  aria-label="Text box height"
+                                  min="8"
+                                  max="60"
+                                  type="number"
+                                  value={Math.round(selectedSlideElement.height * 100)}
+                                  onChange={(event) => {
+                                    const height = clamp((Number(event.target.value) || 8) / 100, 0.08, 0.6);
+                                    updateSelectedSlideElementLayout({
+                                      height,
+                                      y: clamp(selectedSlideElement.y, 0, 1 - height),
+                                    });
+                                  }}
+                                />
+                              </label>
+                            </div>
+                            <div className="alignment-tools" aria-label="Align text block">
+                              {[
+                                ["left", "Left"],
+                                ["center", "Center"],
+                                ["right", "Right"],
+                                ["top", "Top"],
+                                ["middle", "Middle"],
+                                ["bottom", "Bottom"],
+                              ].map(([alignment, label]) => (
+                                <button
+                                  aria-label={`Align ${label.toLowerCase()}`}
+                                  key={alignment}
+                                  onClick={() =>
+                                    alignSelectedSlideElement(
+                                      alignment as "left" | "center" | "right" | "top" | "middle" | "bottom",
+                                    )
+                                  }
+                                >
+                                  {label}
+                                </button>
+                              ))}
+                            </div>
+                            <button className="button danger compact" onClick={deleteSelectedSlideElement}>
+                              <Trash2 size={14} />
+                              {selectedSlideElements.length > 1 ? "Remove selected" : "Remove text"}
+                            </button>
+                          </div>
+                        ) : null}
                       </div>
-                      <button className="button danger" onClick={deleteSelectedSlideElement}>
-                        <Trash2 size={16} />
-                        {selectedSlideElements.length > 1 ? "Remove selected" : "Remove text"}
-                      </button>
-                    </>
-                  ) : (
-                    <p className="design-empty">Add a text layer or select existing text on the slide.</p>
-                  )}
-                </aside>
+                    ) : null}
+                  </div>
+                </div>
               </section>
               <section className="carousel-assets" aria-label="Carousel source assets">
                 <div className="splitter-controls">
@@ -3768,6 +4049,45 @@ function getGridImageStyle(crop: Slide["crop"], asset: SourceAsset, aspectRatio:
     width: `${imageWidthPercent}%`,
     height: `${imageHeightPercent}%`,
     transform: `translate(-50%, -50%) translate(${crop.x}px, ${crop.y}px) rotate(${rotation}deg) scale(${crop.scale})`,
+  };
+}
+
+function loadUserCarouselTemplates(): UserCarouselSlideTemplate[] {
+  try {
+    const rawTemplates = window.localStorage.getItem(carouselUserTemplatesStorageKey);
+
+    if (!rawTemplates) {
+      return [];
+    }
+
+    const templates = JSON.parse(rawTemplates);
+
+    if (!Array.isArray(templates)) {
+      return [];
+    }
+
+    return templates.filter(isUserCarouselSlideTemplate);
+  } catch {
+    return [];
+  }
+}
+
+function isUserCarouselSlideTemplate(value: unknown): value is UserCarouselSlideTemplate {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+
+  const template = value as Partial<UserCarouselSlideTemplate>;
+  return typeof template.id === "string" && typeof template.name === "string" && Array.isArray(template.elements);
+}
+
+function cloneSlideElementForTemplate(element: SlideElement): SlideElement {
+  return {
+    ...element,
+    id: `template-element-${crypto.randomUUID()}`,
+    style: {
+      ...element.style,
+    },
   };
 }
 

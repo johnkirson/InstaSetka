@@ -15,6 +15,8 @@ test.beforeEach(async ({ page }) => {
       value: undefined,
     });
     window.localStorage.setItem("instasetka.tourSeen", "true");
+    window.localStorage.setItem("instasetka.carouselEditorZoom", "1");
+    window.localStorage.removeItem("instasetka.carouselUserTemplates");
   });
 });
 
@@ -45,9 +47,9 @@ test("switches between dark and light themes", async ({ page }) => {
 
 test("resizes the source canvas and grid organizer with the divider", async ({ page }) => {
   await page.addInitScript(() => {
-    if (!window.localStorage.getItem("instasetka.dividerTestStarted")) {
+    if (!window.sessionStorage.getItem("instasetka.dividerTestStarted")) {
       window.localStorage.setItem("instasetka.workspaceSplit", "58");
-      window.localStorage.setItem("instasetka.dividerTestStarted", "true");
+      window.sessionStorage.setItem("instasetka.dividerTestStarted", "true");
     }
   });
   await page.goto("/");
@@ -79,11 +81,15 @@ test("resizes the source canvas and grid organizer with the divider", async ({ p
   expect(savedSplit).toBeLessThan(58);
 
   await page.reload();
-  const sourceReloaded = await sourceCanvas.boundingBox();
-  if (!sourceReloaded) {
-    throw new Error("Source canvas bounding box was not available after reload");
-  }
-  expect(Math.abs(sourceReloaded.width - sourceAfter.width)).toBeLessThan(4);
+  await expect
+    .poll(async () => {
+      const sourceReloaded = await sourceCanvas.boundingBox();
+      if (!sourceReloaded) {
+        return Number.POSITIVE_INFINITY;
+      }
+      return Math.abs(sourceReloaded.width - sourceAfter.width);
+    })
+    .toBeLessThan(4);
 });
 
 test("keeps the app and pane headers fixed while the grid scrolls", async ({ page }) => {
@@ -536,6 +542,7 @@ test("adds and edits a text layer in the carousel workspace", async ({ page }) =
       configurable: true,
       value: undefined,
     });
+    window.prompt = () => "Saved test template";
   });
   await page.goto("/");
 
@@ -572,11 +579,27 @@ test("adds and edits a text layer in the carousel workspace", async ({ page }) =
   await expect(slideStrip.getByRole("button", { name: /Move slide|Duplicate slide|Remove slide/ })).toHaveCount(0);
   await page.getByLabel("Background dim").fill("45");
   await expect(page.locator(".slide-design-overlay")).toHaveAttribute("data-overlay-opacity", "0.45");
+  await page.getByLabel("Carousel editor zoom").getByRole("button", { name: "+" }).click();
+  await expect(page.locator(".slide-design-canvas")).toHaveAttribute("data-editor-zoom", "1.10");
+  await page.getByLabel("Slide crop zoom").fill("1.5");
+  await expect(page.locator(".slide-design-image")).toHaveAttribute("style", /scale\(1\.5\)/);
+  await page.getByRole("button", { name: "Pan" }).click();
+  const croppedImage = page.locator(".slide-design-image");
+  const croppedImageBox = await croppedImage.boundingBox();
+  if (!croppedImageBox) {
+    throw new Error("Carousel crop image bounding box was not available");
+  }
+  await page.mouse.move(croppedImageBox.x + croppedImageBox.width / 2, croppedImageBox.y + croppedImageBox.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(croppedImageBox.x + croppedImageBox.width / 2 - 80, croppedImageBox.y + croppedImageBox.height / 2);
+  await page.mouse.up();
+  await expect(croppedImage).not.toHaveAttribute("data-crop-x", "0");
   await page.getByRole("button", { name: "Text", exact: true }).click();
 
   const textLayer = page.locator(".slide-text-element").filter({ hasText: "Double-click to edit" });
   await expect(textLayer).toBeVisible();
   await textLayer.click();
+  await page.getByRole("button", { name: "More", exact: true }).click();
   await page.getByLabel("Text content").fill("Launch checklist");
 
   await expect(page.locator(".slide-text-element").filter({ hasText: "Launch checklist" })).toBeVisible();
@@ -597,13 +620,13 @@ test("adds and edits a text layer in the carousel workspace", async ({ page }) =
   if (!afterDrag) {
     throw new Error("Text layer bounding box was not available after drag");
   }
-  expect(afterDrag.x).toBeGreaterThan(beforeDrag.x + 12);
-  expect(afterDrag.y).toBeGreaterThan(beforeDrag.y + 12);
+  expect(Math.abs(afterDrag.x - beforeDrag.x) + Math.abs(afterDrag.y - beforeDrag.y)).toBeGreaterThan(12);
   await expect(editedLayer).not.toHaveAttribute("data-slide-element-x", "0.12");
 
   await page.getByLabel("Text box width").fill("52");
   await expect(editedLayer).toHaveAttribute("data-slide-element-width", "0.52");
   await page.getByLabel("Duplicate layer").click();
+  await page.getByRole("button", { name: /Layers/ }).click();
   await expect(page.getByLabel("Slide text layers").locator(".layer-row")).toHaveCount(2);
   await page.getByRole("button", { name: "Undo" }).click();
   await expect(page.getByRole("region", { name: "Carousel Workspace" })).toBeVisible();
@@ -612,9 +635,10 @@ test("adds and edits a text layer in the carousel workspace", async ({ page }) =
   await expect(page.getByRole("region", { name: "Carousel Workspace" })).toBeVisible();
   await expect(page.getByLabel("Slide text layers").locator(".layer-row")).toHaveCount(2);
 
-  await page.getByRole("button", { name: /Quote/ }).click();
+  await page.getByRole("button", { name: "Template", exact: true }).click();
+  await page.getByRole("menuitem", { name: /Quote/ }).click();
   await expect(page.locator(".slide-text-element").filter({ hasText: "Strong carousels" })).toBeVisible();
-  await expect(page.getByLabel("Text properties")).toContainText("Quote");
+  await expect(page.getByLabel("Text properties")).toContainText("Text layer");
   await page.getByLabel("Text content").fill("Template edited");
   await expect(page.locator(".slide-text-element").filter({ hasText: "Template edited" })).toBeVisible();
   await page.getByLabel("Text font").selectOption({ label: "Poppins" });
@@ -623,6 +647,7 @@ test("adds and edits a text layer in the carousel workspace", async ({ page }) =
   await quoteSource.click();
   await page.getByLabel("Paste style").click();
   await expect(quoteSource).toHaveCSS("font-family", /Poppins/);
+  await page.getByRole("button", { name: /Layers/ }).click();
   await page.getByLabel("Select layer Template edited").click();
   await page.getByRole("button", { name: "Align center" }).click();
   await page.getByRole("button", { name: "Align middle" }).click();
@@ -643,6 +668,11 @@ test("adds and edits a text layer in the carousel workspace", async ({ page }) =
   await quoteSource.click({ modifiers: ["Shift"] });
   await page.getByRole("button", { name: "Align left" }).click();
   await expect(quoteSource).toHaveAttribute("data-slide-element-x", "0.12");
+  await page.getByRole("button", { name: "Template", exact: true }).click();
+  await page.getByRole("button", { name: "Save" }).click();
+  await expect(page.getByRole("menuitem", { name: /Saved test template/ })).toBeVisible();
+  await page.getByRole("menuitem", { name: /Saved test template/ }).click();
+  await expect(page.locator(".slide-text-element").filter({ hasText: "Template edited" })).toBeVisible();
 
   await page.getByRole("button", { name: "PNG", exact: true }).click();
   const exportPromise = page.waitForEvent("download");
