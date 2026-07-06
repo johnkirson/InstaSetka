@@ -1909,6 +1909,21 @@ export function App() {
     setEditingSlideElementContent("");
   }
 
+  function clearSlideTextInteraction() {
+    commitInlineSlideTextEdit();
+    setSelectedSlideElementIds([]);
+  }
+
+  function toggleCarouselCropEditing() {
+    const nextCropEditing = !carouselCropEditing;
+
+    if (nextCropEditing) {
+      clearSlideTextInteraction();
+    }
+
+    setCarouselCropEditing(nextCropEditing);
+  }
+
   function updateSelectedSlideElementStyle(style: Partial<SlideTextStyle>) {
     if (!selectedSlide || selectedSlideElements.length === 0) {
       return;
@@ -2109,6 +2124,10 @@ export function App() {
 
   function selectSlideElement(elementId: string, additive: boolean) {
     setCarouselCropEditing(false);
+
+    if (editingSlideElementId && editingSlideElementId !== elementId) {
+      commitInlineSlideTextEdit();
+    }
 
     if (!additive) {
       setSelectedSlideElementIds([elementId]);
@@ -3184,7 +3203,7 @@ export function App() {
                   <div className="slide-crop-strip" aria-label="Carousel crop controls">
                     <button
                       className={`button secondary compact ${carouselCropEditing ? "is-active" : ""}`}
-                      onClick={() => setCarouselCropEditing((current) => !current)}
+                      onClick={toggleCarouselCropEditing}
                     >
                       <ScanLine size={14} />
                       {carouselCropEditing ? "Pan on" : "Pan"}
@@ -3247,7 +3266,7 @@ export function App() {
                           "--slide-aspect": cssAspectByMode[activeAspectRatio],
                         } as CSSProperties
                       }
-                      onClick={() => setSelectedSlideElementIds([])}
+                      onClick={clearSlideTextInteraction}
                     >
                       {selectedSlidePreviewUrl && selectedSlideAsset && selectedSlide ? (
                         <img
