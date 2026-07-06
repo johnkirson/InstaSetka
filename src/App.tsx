@@ -3184,7 +3184,15 @@ export function App() {
                     </label>
                     <span>{Math.round((selectedSlide?.background?.overlayOpacity ?? 0) * 100)}%</span>
                   </div>
-                  <div className="slide-canvas-shell">
+                  <div
+                    className="slide-canvas-shell"
+                    style={
+                      {
+                        "--slide-aspect": cssAspectByMode[activeAspectRatio],
+                        "--slide-zoom": carouselEditorZoom,
+                      } as CSSProperties
+                    }
+                  >
                     <div
                       className="slide-design-canvas"
                       data-active-aspect={activeAspectRatio}
@@ -3193,7 +3201,6 @@ export function App() {
                       style={
                         {
                           "--slide-aspect": cssAspectByMode[activeAspectRatio],
-                          "--slide-zoom": carouselEditorZoom,
                         } as CSSProperties
                       }
                       onClick={() => setSelectedSlideElementIds([])}
