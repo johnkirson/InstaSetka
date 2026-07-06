@@ -769,9 +769,6 @@ export function App() {
       return;
     }
 
-    if (validSelectedIds.length === 0 && selectedSlide?.templateId && selectedSlide.elements?.[0]) {
-      setSelectedSlideElementIds([selectedSlide.elements[0].id]);
-    }
   }, [editingSlideElementId, selectedSlide, selectedSlideElementIds]);
 
   useEffect(() => {
