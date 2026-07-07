@@ -128,7 +128,8 @@ const carouselUserTemplatesStorageKey = "instasetka.carouselUserTemplates";
 const tourSeenStorageKey = "instasetka.tourSeen";
 const minWorkspaceSplit = 34;
 const maxWorkspaceSplit = 72;
-const carouselGridStep = 0.05;
+const carouselGridStep = 0.025;
+const carouselGuideSnapThreshold = 0.0125;
 const fallbackQualitySlotSize: SlotSize = { width: 400, height: 500 };
 const quickTourSteps: TourStep[] = [
   {
@@ -326,6 +327,21 @@ type GridDropHint = {
   y: number;
 };
 
+type SlideAlignmentGuide = {
+  id: string;
+  orientation: "horizontal" | "vertical";
+  position: number;
+};
+
+type SlideElementBounds = {
+  left: number;
+  top: number;
+  right: number;
+  bottom: number;
+  centerX: number;
+  centerY: number;
+};
+
 type TourMode = "quick" | "advanced";
 
 type UserCarouselSlideTemplate = CarouselSlideTemplate & {
@@ -399,6 +415,7 @@ export function App() {
   const [showCarouselGrid, setShowCarouselGrid] = useState(
     () => window.localStorage.getItem(carouselGridStorageKey) === "true",
   );
+  const [slideAlignmentGuides, setSlideAlignmentGuides] = useState<SlideAlignmentGuide[]>([]);
   const [userCarouselTemplates, setUserCarouselTemplates] = useState<UserCarouselSlideTemplate[]>(() =>
     loadUserCarouselTemplates(),
   );
@@ -2204,6 +2221,7 @@ export function App() {
     const draggedElements = selectedSlide.elements?.filter((slideElement) => draggedElementIds.includes(slideElement.id)) ?? [
       element,
     ];
+    const stationaryElements = selectedSlide.elements?.filter((slideElement) => !draggedElementIds.includes(slideElement.id)) ?? [];
     const startByElementId = new Map(
       draggedElements.map((draggedElement) => [
         draggedElement.id,
@@ -2222,6 +2240,18 @@ export function App() {
     function handlePointerMove(moveEvent: PointerEvent) {
       const deltaX = (moveEvent.clientX - start.x) / canvasRect.width;
       const deltaY = (moveEvent.clientY - start.y) / canvasRect.height;
+      const rawPositions = draggedElements.map((draggedElement) => {
+        const startPosition = startByElementId.get(draggedElement.id);
+        const rawX = startPosition ? startPosition.elementX + deltaX : draggedElement.x;
+        const rawY = startPosition ? startPosition.elementY + deltaY : draggedElement.y;
+
+        return {
+          element: draggedElement,
+          x: showCarouselGrid ? snapToStep(rawX, carouselGridStep) : rawX,
+          y: showCarouselGrid ? snapToStep(rawY, carouselGridStep) : rawY,
+        };
+      });
+      const guideSnap = getSlideGuideSnap(rawPositions, stationaryElements, carouselGuideSnapThreshold);
 
       setProject((currentProject) =>
         draggedElements.reduce((nextProject, draggedElement) => {
@@ -2233,16 +2263,10 @@ export function App() {
 
           const rawX = startPosition.elementX + deltaX;
           const rawY = startPosition.elementY + deltaY;
-          const nextX = clamp(
-            showCarouselGrid ? snapToStep(rawX, carouselGridStep) : rawX,
-            0,
-            1 - draggedElement.width,
-          );
-          const nextY = clamp(
-            showCarouselGrid ? snapToStep(rawY, carouselGridStep) : rawY,
-            0,
-            1 - draggedElement.height,
-          );
+          const baseX = showCarouselGrid ? snapToStep(rawX, carouselGridStep) : rawX;
+          const baseY = showCarouselGrid ? snapToStep(rawY, carouselGridStep) : rawY;
+          const nextX = clamp(baseX + guideSnap.deltaX, 0, 1 - draggedElement.width);
+          const nextY = clamp(baseY + guideSnap.deltaY, 0, 1 - draggedElement.height);
 
           return updateSlideElement(nextProject, slideId, draggedElement.id, {
             x: Number(nextX.toFixed(4)),
@@ -2250,11 +2274,13 @@ export function App() {
           });
         }, currentProject),
       );
+      setSlideAlignmentGuides(guideSnap.guides);
     }
 
     function handlePointerUp() {
       window.removeEventListener("pointermove", handlePointerMove);
       window.removeEventListener("pointerup", handlePointerUp);
+      setSlideAlignmentGuides([]);
     }
 
     window.addEventListener("pointermove", handlePointerMove);
@@ -3338,6 +3364,18 @@ export function App() {
                         />
                       ) : null}
                       {showCarouselGrid ? <div className="slide-alignment-grid" aria-hidden="true" /> : null}
+                      {slideAlignmentGuides.map((guide) => (
+                        <div
+                          aria-hidden="true"
+                          className={`slide-smart-guide is-${guide.orientation}`}
+                          key={guide.id}
+                          style={
+                            guide.orientation === "vertical"
+                              ? { left: `${guide.position * 100}%` }
+                              : { top: `${guide.position * 100}%` }
+                          }
+                        />
+                      ))}
                       {selectedSlide?.elements?.map((element) => (
                         <button
                           className={`slide-text-element ${
@@ -4284,6 +4322,117 @@ function getSlideElementsBounds(elements: SlideElement[]): {
     centerX: left + (right - left) / 2,
     centerY: top + (bottom - top) / 2,
   };
+}
+
+function getSlideGuideSnap(
+  positionedElements: Array<{ element: SlideElement; x: number; y: number }>,
+  stationaryElements: SlideElement[],
+  threshold: number,
+): { deltaX: number; deltaY: number; guides: SlideAlignmentGuide[] } {
+  if (positionedElements.length === 0) {
+    return { deltaX: 0, deltaY: 0, guides: [] };
+  }
+
+  const draggedBounds = getPositionedSlideElementsBounds(positionedElements);
+  const verticalCandidates = [
+    { position: 0, id: "slide-left" },
+    { position: 0.5, id: "slide-center" },
+    { position: 1, id: "slide-right" },
+    ...stationaryElements.flatMap((element, index) => [
+      { position: element.x, id: `element-${index}-left` },
+      { position: element.x + element.width / 2, id: `element-${index}-center` },
+      { position: element.x + element.width, id: `element-${index}-right` },
+    ]),
+  ];
+  const horizontalCandidates = [
+    { position: 0, id: "slide-top" },
+    { position: 0.5, id: "slide-middle" },
+    { position: 1, id: "slide-bottom" },
+    ...stationaryElements.flatMap((element, index) => [
+      { position: element.y, id: `element-${index}-top` },
+      { position: element.y + element.height / 2, id: `element-${index}-middle` },
+      { position: element.y + element.height, id: `element-${index}-bottom` },
+    ]),
+  ];
+  const verticalSnap = findNearestGuideSnap(
+    [
+      { position: draggedBounds.left, anchor: "left" },
+      { position: draggedBounds.centerX, anchor: "center" },
+      { position: draggedBounds.right, anchor: "right" },
+    ],
+    verticalCandidates,
+    threshold,
+  );
+  const horizontalSnap = findNearestGuideSnap(
+    [
+      { position: draggedBounds.top, anchor: "top" },
+      { position: draggedBounds.centerY, anchor: "middle" },
+      { position: draggedBounds.bottom, anchor: "bottom" },
+    ],
+    horizontalCandidates,
+    threshold,
+  );
+
+  return {
+    deltaX: verticalSnap?.delta ?? 0,
+    deltaY: horizontalSnap?.delta ?? 0,
+    guides: [
+      ...(verticalSnap
+        ? [{ id: `vertical-${verticalSnap.candidateId}`, orientation: "vertical" as const, position: verticalSnap.position }]
+        : []),
+      ...(horizontalSnap
+        ? [{ id: `horizontal-${horizontalSnap.candidateId}`, orientation: "horizontal" as const, position: horizontalSnap.position }]
+        : []),
+    ],
+  };
+}
+
+function getPositionedSlideElementsBounds(
+  positionedElements: Array<{ element: SlideElement; x: number; y: number }>,
+): SlideElementBounds {
+  const left = Math.min(...positionedElements.map((item) => item.x));
+  const top = Math.min(...positionedElements.map((item) => item.y));
+  const right = Math.max(...positionedElements.map((item) => item.x + item.element.width));
+  const bottom = Math.max(...positionedElements.map((item) => item.y + item.element.height));
+
+  return {
+    left,
+    top,
+    right,
+    bottom,
+    centerX: left + (right - left) / 2,
+    centerY: top + (bottom - top) / 2,
+  };
+}
+
+function findNearestGuideSnap(
+  anchors: Array<{ position: number; anchor: string }>,
+  candidates: Array<{ position: number; id: string }>,
+  threshold: number,
+): { delta: number; position: number; candidateId: string } | null {
+  let nearest: { delta: number; position: number; candidateId: string; distance: number } | undefined;
+
+  for (const anchor of anchors) {
+    for (const candidate of candidates) {
+      const delta = candidate.position - anchor.position;
+      const distance = Math.abs(delta);
+
+      if (distance > threshold) {
+        continue;
+      }
+
+      if (!nearest || distance < nearest.distance) {
+        nearest = {
+          delta,
+          position: candidate.position,
+          candidateId: `${candidate.id}-${anchor.anchor}`,
+          distance,
+        };
+      }
+    }
+  }
+
+  return nearest ? { delta: nearest.delta, position: nearest.position, candidateId: nearest.candidateId } : null;
 }
 
 function normalizeRotation(rotation: number): number {

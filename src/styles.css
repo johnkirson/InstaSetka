@@ -771,6 +771,28 @@ h2 {
   pointer-events: none;
 }
 
+.slide-smart-guide {
+  position: absolute;
+  z-index: 4;
+  background: color-mix(in srgb, var(--color-accent) 88%, #ffffff);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-bg) 70%, transparent);
+  pointer-events: none;
+}
+
+.slide-smart-guide.is-vertical {
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  transform: translateX(-0.5px);
+}
+
+.slide-smart-guide.is-horizontal {
+  right: 0;
+  left: 0;
+  height: 1px;
+  transform: translateY(-0.5px);
+}
+
 .slide-text-element {
   position: absolute;
   z-index: 3;
