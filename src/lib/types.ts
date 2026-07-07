@@ -100,7 +100,10 @@ export type SlideTextStyle = {
   fontFamily: string;
   fontSize: number;
   fontWeight: 400 | 500 | 600 | 700 | 800;
+  fontStyle?: "normal" | "italic";
   color: string;
   textAlign: "left" | "center" | "right";
   lineHeight: number;
+  letterSpacing?: number;
+  textTransform?: "none" | "uppercase";
 };

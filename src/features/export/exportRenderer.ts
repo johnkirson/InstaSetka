@@ -1,4 +1,5 @@
 import type { AspectRatio, CropState, ExportFormat, SlideBackground, SlideElement, SourceAsset } from "../../lib/types";
+import { parseInlineTextRuns } from "../text/inlineMarkup";
 import {
   getExportMimeType,
   getExportPreset,
@@ -86,7 +87,7 @@ export function drawSlideElementsOnCanvas(
   for (const element of elements) {
     context.save();
     context.fillStyle = element.style.color;
-    context.font = `${element.style.fontWeight} ${element.style.fontSize}px ${element.style.fontFamily}`;
+    context.font = `${element.style.fontStyle ?? "normal"} ${element.style.fontWeight} ${element.style.fontSize}px ${element.style.fontFamily}`;
     context.textAlign = element.style.textAlign;
     context.textBaseline = "top";
 
@@ -101,15 +102,18 @@ export function drawSlideElementsOnCanvas(
           ? x + width
           : x;
 
-    for (const [lineIndex, line] of wrapCanvasText(context, element.content, width).entries()) {
-      context.fillText(line, anchorX, y + lineIndex * lineHeight);
+    const transformedContent =
+      element.style.textTransform === "uppercase" ? element.content.toUpperCase() : element.content;
+
+    for (const [lineIndex, line] of wrapCanvasText(context, transformedContent, width, element.style.letterSpacing ?? 0).entries()) {
+      drawCanvasRichTextLine(context, line, anchorX, y + lineIndex * lineHeight, element);
     }
 
     context.restore();
   }
 }
 
-function wrapCanvasText(context: CanvasRenderingContext2D, text: string, maxWidth: number): string[] {
+function wrapCanvasText(context: CanvasRenderingContext2D, text: string, maxWidth: number, letterSpacing = 0): string[] {
   const explicitLines = text.split(/\r?\n/);
   const lines: string[] = [];
 
@@ -119,7 +123,7 @@ function wrapCanvasText(context: CanvasRenderingContext2D, text: string, maxWidt
 
     for (const word of words) {
       const candidate = line ? `${line} ${word}` : word;
-      if (line && context.measureText(candidate).width > maxWidth) {
+      if (line && measureCanvasTextLine(context, candidate, letterSpacing) > maxWidth) {
         lines.push(line);
         line = word;
       } else {
@@ -131,6 +135,78 @@ function wrapCanvasText(context: CanvasRenderingContext2D, text: string, maxWidt
   }
 
   return lines.length > 0 ? lines : [""];
+}
+
+function drawCanvasRichTextLine(
+  context: CanvasRenderingContext2D,
+  line: string,
+  x: number,
+  y: number,
+  element: SlideElement,
+) {
+  const letterSpacing = element.style.letterSpacing ?? 0;
+  const runs = parseInlineTextRuns(line);
+  const width = runs.reduce((sum, run) => {
+    context.font = getCanvasTextFont(element, run);
+    return sum + measureCanvasTextLine(context, run.text, letterSpacing);
+  }, 0);
+  const startX = context.textAlign === "center" ? x - width / 2 : context.textAlign === "right" ? x - width : x;
+  const originalAlign = context.textAlign;
+  let cursorX = startX;
+
+  context.textAlign = "left";
+
+  for (const run of runs) {
+    context.font = getCanvasTextFont(element, run);
+    drawCanvasTextLine(context, run.text, cursorX, y, letterSpacing);
+    cursorX += measureCanvasTextLine(context, run.text, letterSpacing);
+  }
+
+  context.textAlign = originalAlign;
+}
+
+function getCanvasTextFont(
+  element: SlideElement,
+  run: { bold: boolean; italic: boolean },
+): string {
+  const fontStyle = run.italic ? "italic" : element.style.fontStyle ?? "normal";
+  const fontWeight = run.bold ? Math.max(700, element.style.fontWeight) : element.style.fontWeight;
+  return `${fontStyle} ${fontWeight} ${element.style.fontSize}px ${element.style.fontFamily}`;
+}
+
+function measureCanvasTextLine(context: CanvasRenderingContext2D, text: string, letterSpacing: number): number {
+  if (letterSpacing === 0 || text.length <= 1) {
+    return context.measureText(text).width;
+  }
+
+  return context.measureText(text).width + letterSpacing * (text.length - 1);
+}
+
+function drawCanvasTextLine(
+  context: CanvasRenderingContext2D,
+  text: string,
+  x: number,
+  y: number,
+  letterSpacing: number,
+) {
+  if (letterSpacing === 0 || text.length <= 1) {
+    context.fillText(text, x, y);
+    return;
+  }
+
+  const width = measureCanvasTextLine(context, text, letterSpacing);
+  const startX = context.textAlign === "center" ? x - width / 2 : context.textAlign === "right" ? x - width : x;
+  const originalAlign = context.textAlign;
+  let cursorX = startX;
+
+  context.textAlign = "left";
+
+  for (const character of text) {
+    context.fillText(character, cursorX, y);
+    cursorX += context.measureText(character).width + letterSpacing;
+  }
+
+  context.textAlign = originalAlign;
 }
 
 export function drawCroppedImageOnCanvas(

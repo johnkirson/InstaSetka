@@ -632,12 +632,18 @@ h2 {
 
 .template-card-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 28px;
+  grid-template-columns: minmax(0, 1fr) auto auto 28px;
+  align-items: stretch;
   gap: 6px;
 }
 
 .template-card-row .template-card {
   min-width: 0;
+}
+
+.template-card-row .button {
+  min-width: 0;
+  padding-inline: 8px;
 }
 
 .slide-zoom-control {
@@ -814,20 +820,27 @@ h2 {
 
 .slide-text-element.is-editing {
   cursor: text;
+  overflow: visible;
 }
 
 .slide-text-inline-editor {
   display: block;
   width: 100%;
-  min-height: inherit;
+  min-height: 100%;
+  height: auto;
+  overflow: hidden;
   padding: 0;
   border: 0;
   outline: 0;
   background: transparent;
   color: inherit;
   font: inherit;
+  font-weight: inherit;
+  font-style: inherit;
   line-height: inherit;
+  letter-spacing: inherit;
   text-align: inherit;
+  text-transform: inherit;
   resize: none;
   white-space: pre-wrap;
 }
@@ -1110,6 +1123,42 @@ h2 {
 
 .text-quick-controls select,
 .text-quick-controls input {
+  height: 30px;
+  border: 1px solid var(--color-border);
+  border-radius: 5px;
+  background: var(--color-surface);
+  color: var(--color-text);
+}
+
+.text-style-controls {
+  display: grid;
+  grid-template-columns: repeat(3, 32px) minmax(0, 1fr);
+  gap: 6px;
+}
+
+.text-style-controls button {
+  min-width: 0;
+  height: 30px;
+  padding: 0;
+  border: 1px solid var(--color-border);
+  border-radius: 5px;
+  background: var(--color-surface-alt);
+  color: var(--color-text);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.text-style-controls button:nth-child(2) {
+  font-style: italic;
+}
+
+.text-style-controls button.is-active {
+  border-color: var(--color-accent);
+  background: color-mix(in srgb, var(--color-accent) 18%, var(--color-surface));
+}
+
+.text-style-controls select {
+  width: 100%;
   height: 30px;
   border: 1px solid var(--color-border);
   border-radius: 5px;

@@ -456,9 +456,12 @@ export function addTextElementToSlide(
       fontFamily: "Inter, Arial, sans-serif",
       fontSize: 72,
       fontWeight: 700,
+      fontStyle: "normal",
       color: "#f8fafc",
       textAlign: "center",
       lineHeight: 1.05,
+      letterSpacing: 0,
+      textTransform: "none",
     },
   };
 

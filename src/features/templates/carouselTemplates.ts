@@ -1,4 +1,4 @@
-import type { SlideElement } from "../../lib/types";
+import type { Slide, SlideElement } from "../../lib/types";
 import { googleFontOptions } from "./fontOptions";
 
 export type CarouselSlideTemplate = {
@@ -6,6 +6,7 @@ export type CarouselSlideTemplate = {
   name: string;
   description: string;
   elements: SlideElement[];
+  background?: Slide["background"];
 };
 
 const baseFont = googleFontOptions[0].stack;
@@ -67,6 +68,108 @@ export const carouselSlideTemplates: CarouselSlideTemplate[] = [
           color: "#d7ded3",
           textAlign: "left",
           lineHeight: 1.12,
+        },
+      },
+    ],
+  },
+  {
+    id: "real-depth",
+    name: "Real Depth",
+    description: "Editorial text slide with deep contrast and long-form body copy.",
+    background: {
+      type: "solid",
+      color: "#000000",
+      overlayOpacity: 0.72,
+    },
+    elements: [
+      {
+        id: "template-real-depth-step",
+        type: "text",
+        x: 0.1,
+        y: 0.25,
+        width: 0.55,
+        height: 0.06,
+        content: "07 / 08 - REAL DEPTH",
+        style: {
+          fontFamily: accentFont,
+          fontSize: 22,
+          fontWeight: 800,
+          color: "#8f8f96",
+          textAlign: "left",
+          lineHeight: 1,
+          letterSpacing: 1.8,
+          textTransform: "uppercase",
+        },
+      },
+      {
+        id: "template-real-depth-title",
+        type: "text",
+        x: 0.1,
+        y: 0.34,
+        width: 0.82,
+        height: 0.12,
+        content: "A warm-up for creative limits.",
+        style: {
+          fontFamily: accentFont,
+          fontSize: 54,
+          fontWeight: 800,
+          color: "#ffffff",
+          textAlign: "left",
+          lineHeight: 0.96,
+        },
+      },
+      {
+        id: "template-real-depth-body",
+        type: "text",
+        x: 0.1,
+        y: 0.46,
+        width: 0.82,
+        height: 0.32,
+        content:
+          "Use this space for a clear reflective paragraph. Keep the rhythm calm, let the main idea breathe, and make one sentence carry the deeper point of the slide.",
+        style: {
+          fontFamily: baseFont,
+          fontSize: 29,
+          fontWeight: 500,
+          color: "#b7b7bc",
+          textAlign: "left",
+          lineHeight: 1.38,
+        },
+      },
+      {
+        id: "template-real-depth-next",
+        type: "text",
+        x: 0.1,
+        y: 0.88,
+        width: 0.32,
+        height: 0.05,
+        content: "NEXT ... ->",
+        style: {
+          fontFamily: accentFont,
+          fontSize: 21,
+          fontWeight: 800,
+          color: "#f2f2f2",
+          textAlign: "left",
+          lineHeight: 1,
+          letterSpacing: 2,
+          textTransform: "uppercase",
+        },
+      },
+      {
+        id: "template-real-depth-count",
+        type: "text",
+        x: 0.82,
+        y: 0.05,
+        width: 0.12,
+        height: 0.06,
+        content: "7/8",
+        style: {
+          fontFamily: accentFont,
+          fontSize: 30,
+          fontWeight: 700,
+          color: "#f4f4f4",
+          textAlign: "right",
+          lineHeight: 1,
         },
       },
     ],

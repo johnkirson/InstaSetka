@@ -102,6 +102,7 @@ import {
 } from "./features/splitter/longImageSplitter";
 import { carouselSlideTemplates, type CarouselSlideTemplate } from "./features/templates/carouselTemplates";
 import { googleFontOptions } from "./features/templates/fontOptions";
+import { parseInlineTextRuns } from "./features/text/inlineMarkup";
 import { FeatureTour, type TourStep } from "./features/tour/FeatureTour";
 import type { CanvasItem, MosaicGroup, Project, Slide, SlideElement, SlideTextStyle, SourceAsset } from "./lib/types";
 import type { AspectRatio, ExportFormat } from "./lib/types";
@@ -347,6 +348,7 @@ type TourMode = "quick" | "advanced";
 type UserCarouselSlideTemplate = CarouselSlideTemplate & {
   background?: Slide["background"];
   createdAt: string;
+  updatedAt?: string;
 };
 
 type WritableFileHandle = {
@@ -387,6 +389,8 @@ export function App() {
   const canvasSelectionStoreRef = useRef(createCanvasSelectionStore());
   const gridViewportRef = useRef<HTMLDivElement>(null);
   const workspaceRef = useRef<HTMLElement>(null);
+  const selectedSlideContentInputRef = useRef<HTMLTextAreaElement>(null);
+  const inlineSlideTextInputRef = useRef<HTMLTextAreaElement>(null);
   const lastGridPointerRef = useRef<{ slotIndex: number; time: number } | null>(null);
   const autosaveReadyRef = useRef(false);
   const autosaveTimerRef = useRef<number | null>(null);
@@ -722,6 +726,10 @@ export function App() {
   useEffect(() => {
     setCarouselCropEditing(false);
   }, [selectedSlide?.id]);
+
+  useEffect(() => {
+    resizeInlineSlideTextEditor();
+  }, [editingSlideElementContent, editingSlideElementId]);
 
   useEffect(() => {
     if (!projectMenuOpen && !exportMenuOpen) {
@@ -1902,6 +1910,83 @@ export function App() {
     );
   }
 
+  function wrapSelectedSlideContentSelection(marker: "**" | "*"): boolean {
+    if (!selectedSlideElement) {
+      return false;
+    }
+
+    const textarea = selectedSlideContentInputRef.current;
+    const content = selectedSlideElement.content;
+    const selectionStart = textarea?.selectionStart ?? content.length;
+    const selectionEnd = textarea?.selectionEnd ?? content.length;
+
+    if (selectionStart === selectionEnd) {
+      return false;
+    }
+
+    const selectedContent = content.slice(selectionStart, selectionEnd);
+    const nextContent = `${content.slice(0, selectionStart)}${marker}${selectedContent}${marker}${content.slice(selectionEnd)}`;
+    const nextSelectionStart = selectionStart + marker.length;
+    const nextSelectionEnd = nextSelectionStart + selectedContent.length;
+
+    updateSelectedSlideElementContent(nextContent);
+
+    window.requestAnimationFrame(() => {
+      selectedSlideContentInputRef.current?.focus();
+      selectedSlideContentInputRef.current?.setSelectionRange(nextSelectionStart, nextSelectionEnd);
+    });
+
+    return true;
+  }
+
+  function resizeInlineSlideTextEditor() {
+    const textarea = inlineSlideTextInputRef.current;
+
+    if (!textarea) {
+      return;
+    }
+
+    textarea.style.height = "0px";
+    textarea.style.height = `${textarea.scrollHeight}px`;
+  }
+
+  function wrapInlineSlideTextSelection(marker: "**" | "*"): boolean {
+    if (!editingSlideElementId) {
+      return false;
+    }
+
+    const textarea = inlineSlideTextInputRef.current;
+    const selectionStart = textarea?.selectionStart ?? editingSlideElementContent.length;
+    const selectionEnd = textarea?.selectionEnd ?? editingSlideElementContent.length;
+
+    if (selectionStart === selectionEnd) {
+      return false;
+    }
+
+    const selectedContent = editingSlideElementContent.slice(selectionStart, selectionEnd);
+    const nextContent = `${editingSlideElementContent.slice(0, selectionStart)}${marker}${selectedContent}${marker}${editingSlideElementContent.slice(selectionEnd)}`;
+    const nextSelectionStart = selectionStart + marker.length;
+    const nextSelectionEnd = nextSelectionStart + selectedContent.length;
+
+    setEditingSlideElementContent(nextContent);
+
+    window.requestAnimationFrame(() => {
+      inlineSlideTextInputRef.current?.focus();
+      inlineSlideTextInputRef.current?.setSelectionRange(nextSelectionStart, nextSelectionEnd);
+      resizeInlineSlideTextEditor();
+    });
+
+    return true;
+  }
+
+  function wrapActiveSlideTextSelection(marker: "**" | "*"): boolean {
+    if (wrapInlineSlideTextSelection(marker)) {
+      return true;
+    }
+
+    return wrapSelectedSlideContentSelection(marker);
+  }
+
   function startInlineSlideTextEdit(element: SlideElement) {
     setCarouselCropEditing(false);
     setSelectedSlideElementIds([element.id]);
@@ -2051,17 +2136,30 @@ export function App() {
       return;
     }
 
-    commitProjectChange((currentProject) => applySlideTemplate(currentProject, selectedSlide.id, template));
+    commitProjectChange((currentProject) => {
+      const templatedProject = applySlideTemplate(currentProject, selectedSlide.id, template);
+
+      if (!template.background) {
+        return templatedProject;
+      }
+
+      return updateSlideBackground(templatedProject, selectedSlide.id, template.background);
+    });
     setSelectedSlideElementIds([]);
   }
 
-  function applyUserTemplateToSelectedSlide(template: UserCarouselSlideTemplate) {
+  function applyUserTemplateToSelectedSlide(template: UserCarouselSlideTemplate, mode: "full" | "text" = "full") {
     if (!selectedSlide) {
       return;
     }
 
     commitProjectChange((currentProject) => {
       const templatedProject = applySlideTemplate(currentProject, selectedSlide.id, template);
+
+      if (mode === "text") {
+        return templatedProject;
+      }
+
       return updateSlideBackground(templatedProject, selectedSlide.id, {
         overlayOpacity: template.background?.overlayOpacity ?? 0,
       });
@@ -2083,7 +2181,7 @@ export function App() {
     const template: UserCarouselSlideTemplate = {
       id: `user-template-${crypto.randomUUID()}`,
       name,
-      description: `${selectedSlide.elements?.length ?? 0} text layer${selectedSlide.elements?.length === 1 ? "" : "s"}`,
+      description: getUserCarouselTemplateDescription(selectedSlide),
       elements: (selectedSlide.elements ?? []).map(cloneSlideElementForTemplate),
       background: selectedSlide.background
         ? {
@@ -2095,6 +2193,35 @@ export function App() {
 
     setUserCarouselTemplates((currentTemplates) => [template, ...currentTemplates]);
     setCarouselTemplatePanelOpen(true);
+  }
+
+  function updateUserCarouselTemplate(templateId: string) {
+    if (!selectedSlide) {
+      return;
+    }
+
+    const template = userCarouselTemplates.find((candidate) => candidate.id === templateId);
+    if (!template || !window.confirm(`Update "${template.name}" from the current slide?`)) {
+      return;
+    }
+
+    setUserCarouselTemplates((currentTemplates) =>
+      currentTemplates.map((currentTemplate) =>
+        currentTemplate.id === templateId
+          ? {
+              ...currentTemplate,
+              description: getUserCarouselTemplateDescription(selectedSlide),
+              elements: (selectedSlide.elements ?? []).map(cloneSlideElementForTemplate),
+              background: selectedSlide.background
+                ? {
+                    ...selectedSlide.background,
+                  }
+                : undefined,
+              updatedAt: new Date().toISOString(),
+            }
+          : currentTemplate,
+      ),
+    );
   }
 
   function deleteUserCarouselTemplate(templateId: string) {
@@ -3167,12 +3294,29 @@ export function App() {
                                   className={`template-card ${selectedSlide?.templateId === template.id ? "is-active" : ""}`}
                                   role="menuitem"
                                   onClick={() => {
-                                    applyUserTemplateToSelectedSlide(template);
+                                    applyUserTemplateToSelectedSlide(template, "full");
                                     setCarouselTemplatePanelOpen(false);
                                   }}
                                 >
                                   <span>{template.name}</span>
                                   <small>{template.description}</small>
+                                </button>
+                                <button
+                                  className="button secondary compact"
+                                  aria-label={`Apply only text from template ${template.name}`}
+                                  onClick={() => {
+                                    applyUserTemplateToSelectedSlide(template, "text");
+                                    setCarouselTemplatePanelOpen(false);
+                                  }}
+                                >
+                                  Text
+                                </button>
+                                <button
+                                  className="button secondary compact"
+                                  aria-label={`Update template ${template.name}`}
+                                  onClick={() => updateUserCarouselTemplate(template.id)}
+                                >
+                                  Update
                                 </button>
                                 <button
                                   className="icon-button compact"
@@ -3404,12 +3548,36 @@ export function App() {
                               aria-label="Inline text content"
                               autoFocus
                               className="slide-text-inline-editor"
+                              ref={inlineSlideTextInputRef}
                               value={editingSlideElementContent}
                               onBlur={commitInlineSlideTextEdit}
-                              onChange={(event) => setEditingSlideElementContent(event.target.value)}
+                              onChange={(event) => {
+                                setEditingSlideElementContent(event.target.value);
+                                window.requestAnimationFrame(resizeInlineSlideTextEditor);
+                              }}
                               onClick={(event) => event.stopPropagation()}
                               onDoubleClick={(event) => event.stopPropagation()}
                               onKeyDown={(event) => {
+                                if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "b") {
+                                  event.preventDefault();
+                                  if (!wrapInlineSlideTextSelection("**")) {
+                                    updateSelectedSlideElementStyle({
+                                      fontWeight: element.style.fontWeight >= 700 ? 400 : 700,
+                                    });
+                                  }
+                                  return;
+                                }
+
+                                if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "i") {
+                                  event.preventDefault();
+                                  if (!wrapInlineSlideTextSelection("*")) {
+                                    updateSelectedSlideElementStyle({
+                                      fontStyle: element.style.fontStyle === "italic" ? "normal" : "italic",
+                                    });
+                                  }
+                                  return;
+                                }
+
                                 if (event.key === "Escape") {
                                   event.preventDefault();
                                   cancelInlineSlideTextEdit();
@@ -3423,7 +3591,7 @@ export function App() {
                               onPointerDown={(event) => event.stopPropagation()}
                             />
                           ) : (
-                            element.content
+                            renderInlineTextContent(element.content)
                           )}
                         </button>
                       ))}
@@ -3439,8 +3607,32 @@ export function App() {
                           Content
                           <textarea
                             aria-label="Text content"
+                            ref={selectedSlideContentInputRef}
                             value={selectedSlideElement.content}
                             onChange={(event) => updateSelectedSlideElementContent(event.target.value)}
+                            onKeyDown={(event) => {
+                              if (!(event.ctrlKey || event.metaKey)) {
+                                return;
+                              }
+
+                              if (event.key.toLowerCase() === "b") {
+                                event.preventDefault();
+                                if (!wrapSelectedSlideContentSelection("**")) {
+                                  updateSelectedSlideElementStyle({
+                                    fontWeight: selectedSlideElement.style.fontWeight >= 700 ? 400 : 700,
+                                  });
+                                }
+                              }
+
+                              if (event.key.toLowerCase() === "i") {
+                                event.preventDefault();
+                                if (!wrapSelectedSlideContentSelection("*")) {
+                                  updateSelectedSlideElementStyle({
+                                    fontStyle: selectedSlideElement.style.fontStyle === "italic" ? "normal" : "italic",
+                                  });
+                                }
+                              }
+                            }}
                           />
                         </label>
                         <div className="text-quick-controls">
@@ -3471,6 +3663,78 @@ export function App() {
                             value={selectedSlideElement.style.color}
                             onChange={(event) => updateSelectedSlideElementStyle({ color: event.target.value })}
                           />
+                        </div>
+                        <div className="text-style-controls" aria-label="Text style">
+                          <button
+                            className={selectedSlideElement.style.fontWeight >= 700 ? "is-active" : ""}
+                            aria-label="Bold"
+                            aria-pressed={selectedSlideElement.style.fontWeight >= 700}
+                            onMouseDown={(event) => {
+                              if (editingSlideElementId) {
+                                event.preventDefault();
+                              }
+                            }}
+                            onClick={() => {
+                              if (wrapActiveSlideTextSelection("**")) {
+                                return;
+                              }
+
+                              updateSelectedSlideElementStyle({
+                                fontWeight: selectedSlideElement.style.fontWeight >= 700 ? 400 : 700,
+                              });
+                            }}
+                          >
+                            B
+                          </button>
+                          <button
+                            className={selectedSlideElement.style.fontStyle === "italic" ? "is-active" : ""}
+                            aria-label="Italic"
+                            aria-pressed={selectedSlideElement.style.fontStyle === "italic"}
+                            onMouseDown={(event) => {
+                              if (editingSlideElementId) {
+                                event.preventDefault();
+                              }
+                            }}
+                            onClick={() => {
+                              if (wrapActiveSlideTextSelection("*")) {
+                                return;
+                              }
+
+                              updateSelectedSlideElementStyle({
+                                fontStyle: selectedSlideElement.style.fontStyle === "italic" ? "normal" : "italic",
+                              });
+                            }}
+                          >
+                            I
+                          </button>
+                          <button
+                            className={selectedSlideElement.style.textTransform === "uppercase" ? "is-active" : ""}
+                            aria-label="Uppercase"
+                            aria-pressed={selectedSlideElement.style.textTransform === "uppercase"}
+                            onClick={() =>
+                              updateSelectedSlideElementStyle({
+                                textTransform:
+                                  selectedSlideElement.style.textTransform === "uppercase" ? "none" : "uppercase",
+                              })
+                            }
+                          >
+                            AA
+                          </button>
+                          <select
+                            aria-label="Text weight"
+                            value={selectedSlideElement.style.fontWeight}
+                            onChange={(event) =>
+                              updateSelectedSlideElementStyle({
+                                fontWeight: Number(event.target.value) as SlideTextStyle["fontWeight"],
+                              })
+                            }
+                          >
+                            {[400, 500, 600, 700, 800].map((weight) => (
+                              <option key={weight} value={weight}>
+                                {weight}
+                              </option>
+                            ))}
+                          </select>
                         </div>
                         <div className="design-field-row">
                           <label className="design-field">
@@ -3508,6 +3772,20 @@ export function App() {
                             />
                           </label>
                         </div>
+                        <label className="design-field">
+                          Letter spacing
+                          <input
+                            aria-label="Text letter spacing"
+                            min="-2"
+                            max="12"
+                            step="0.5"
+                            type="number"
+                            value={selectedSlideElement.style.letterSpacing ?? 0}
+                            onChange={(event) =>
+                              updateSelectedSlideElementStyle({ letterSpacing: Number(event.target.value) || 0 })
+                            }
+                          />
+                        </label>
                         <div className="segmented compact" aria-label="Text align">
                           {(["left", "center", "right"] as const).map((alignment) => (
                             <button
@@ -4266,6 +4544,12 @@ function isUserCarouselSlideTemplate(value: unknown): value is UserCarouselSlide
   return typeof template.id === "string" && typeof template.name === "string" && Array.isArray(template.elements);
 }
 
+function getUserCarouselTemplateDescription(slide: Slide): string {
+  const textLayerCount = slide.elements?.length ?? 0;
+  const dim = Math.round((slide.background?.overlayOpacity ?? 0) * 100);
+  return `${textLayerCount} text layer${textLayerCount === 1 ? "" : "s"} · dim ${dim}%`;
+}
+
 function cloneSlideElementForTemplate(element: SlideElement): SlideElement {
   return {
     ...element,
@@ -4285,10 +4569,27 @@ function getSlideElementStyle(element: SlideElement): CSSProperties {
     color: element.style.color,
     fontFamily: element.style.fontFamily,
     fontSize: `clamp(9px, ${(element.style.fontSize / 1080) * 100}cqw, ${element.style.fontSize}px)`,
+    fontStyle: element.style.fontStyle ?? "normal",
     fontWeight: element.style.fontWeight,
+    letterSpacing: `${element.style.letterSpacing ?? 0}px`,
     lineHeight: element.style.lineHeight,
     textAlign: element.style.textAlign,
+    textTransform: element.style.textTransform ?? "none",
   };
+}
+
+function renderInlineTextContent(content: string) {
+  return parseInlineTextRuns(content).map((run, index) => (
+    <span
+      key={`${index}-${run.text}`}
+      style={{
+        fontStyle: run.italic ? "italic" : undefined,
+        fontWeight: run.bold ? 800 : undefined,
+      }}
+    >
+      {run.text}
+    </span>
+  ));
 }
 
 function getSlideElementLabel(element: SlideElement, index: number): string {
