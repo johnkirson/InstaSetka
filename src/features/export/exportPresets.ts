@@ -40,6 +40,15 @@ export function getExportPreset(aspectRatio: AspectRatio): ExportPreset {
   return exportPresets[aspectRatio];
 }
 
+export function createSlotSizeFromWidth(aspectRatio: AspectRatio, width: number): SlotSize {
+  const [aspectWidth, aspectHeight] = aspectRatio.split(":").map(Number);
+
+  return {
+    width,
+    height: width / (aspectWidth / aspectHeight),
+  };
+}
+
 export function getExportMimeType(format: ExportFormat): "image/jpeg" | "image/png" {
   return format === "jpeg" ? "image/jpeg" : "image/png";
 }

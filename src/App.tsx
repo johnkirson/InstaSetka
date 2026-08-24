@@ -45,6 +45,7 @@ import {
   createBatchExportFilename,
   createCarouselExportFilename,
   createExportFilename,
+  createSlotSizeFromWidth,
   getExportPreset,
 } from "./features/export/exportPresets";
 import { drawCroppedImageOnCanvas, renderSlideExport } from "./features/export/exportRenderer";
@@ -131,7 +132,7 @@ const minWorkspaceSplit = 34;
 const maxWorkspaceSplit = 72;
 const carouselGridStep = 0.025;
 const carouselGuideSnapThreshold = 0.0125;
-const fallbackQualitySlotSize: SlotSize = { width: 400, height: 500 };
+const fallbackSlotWidth = 400;
 const quickTourSteps: TourStep[] = [
   {
     id: "import",
@@ -526,7 +527,7 @@ export function App() {
   const qualityMapIssues = useMemo<QualityMapIssue[]>(() => {
     const issues: QualityMapIssue[] = [];
     const sourceUseCounts = new Map<string, number>();
-    const slotSize = selectedSlotSize ?? fallbackQualitySlotSize;
+    const slotSize = selectedSlotSize ?? getFallbackSlotSizeForAspect(activeAspectRatio);
 
     for (const post of gridPosts) {
       for (const slide of post?.slides ?? []) {
@@ -1174,7 +1175,9 @@ export function App() {
             const slotElement = document.querySelector<HTMLElement>(
               `[data-grid-slot-index="${slotIndex}"]`,
             );
-            const slot = slotElement ? getUnscaledElementSize(slotElement) : fallbackQualitySlotSize;
+            const slot = slotElement
+              ? getUnscaledElementSize(slotElement)
+              : getFallbackSlotSizeForAspect(activeAspectRatio);
             const crops = createGridMosaicSplitCrops({
               asset: sourceAsset,
               aspectRatio: activeAspectRatio,
@@ -2505,7 +2508,7 @@ export function App() {
 
     const direction =
       splitDirection === "auto" ? inferSplitDirection(sourceAsset, activeAspectRatio) : splitDirection;
-    const slot = selectedSlotSize ?? fallbackQualitySlotSize;
+    const slot = selectedSlotSize ?? getFallbackSlotSizeForAspect(activeAspectRatio);
     const crops = createSplitCrops({
       asset: sourceAsset,
       aspectRatio: activeAspectRatio,
@@ -2747,7 +2750,7 @@ export function App() {
   }
 
   async function exportBatch() {
-    const slotSize = selectedSlotSize ?? fallbackQualitySlotSize;
+    const slotSize = selectedSlotSize ?? getFallbackSlotSizeForAspect(activeAspectRatio);
     const filledSlots = gridSlots.filter((slot) => slot.post);
     const totalSlides = filledSlots.reduce((total, slot) => total + (slot.post?.slides.length ?? 0), 0);
 
@@ -2855,7 +2858,9 @@ export function App() {
         const slotElement = document.querySelector<HTMLElement>(
           `[data-grid-slot-index="${slotIndex}"]`,
         );
-        const slot = slotElement ? getUnscaledElementSize(slotElement) : fallbackQualitySlotSize;
+        const slot = slotElement
+          ? getUnscaledElementSize(slotElement)
+          : getFallbackSlotSizeForAspect(activeAspectRatio);
         const image = await loadImageFromUrl(previewUrl);
         drawCroppedImageOnCanvas(context, {
           image,
@@ -4774,11 +4779,7 @@ function hasMissingPreviewAssets(project: Project, previewUrls: Record<string, s
 }
 
 function getFallbackSlotSizeForAspect(aspectRatio: AspectRatio): SlotSize {
-  const width = 400;
-  return {
-    width,
-    height: width / aspectToNumber(aspectRatio),
-  };
+  return createSlotSizeFromWidth(aspectRatio, fallbackSlotWidth);
 }
 
 function normalizeGridSelection(slotIndexes: number[]): number[] {

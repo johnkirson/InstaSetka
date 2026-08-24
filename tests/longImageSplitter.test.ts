@@ -62,6 +62,41 @@ describe("long image splitter", () => {
     expect(sourceRects[1].sy).toBeCloseTo(sourceRects[2].sy, 5);
   });
 
+  it("keeps a 3:4 grid row seamless for export crops", () => {
+    const asset = { width: 2400, height: 1200 };
+    const slot = { width: 400, height: 1600 / 3 };
+    const crops = createGridMosaicSplitCrops({
+      asset,
+      aspectRatio: "3:4",
+      slotIndexes: [0, 1, 2],
+      slot,
+    });
+    const sourceRects = crops.map((crop) => getSourceCropRect(asset, crop, slot));
+
+    expect(crops).toHaveLength(3);
+    expect(new Set(crops.map((crop) => crop.scale))).toHaveLength(1);
+    expect(sourceRects[0].sx + sourceRects[0].sw).toBeCloseTo(sourceRects[1].sx, 5);
+    expect(sourceRects[1].sx + sourceRects[1].sw).toBeCloseTo(sourceRects[2].sx, 5);
+    expect(sourceRects[0].sy).toBeCloseTo(sourceRects[1].sy, 5);
+    expect(sourceRects[1].sy).toBeCloseTo(sourceRects[2].sy, 5);
+  });
+
+  it("orders mosaic crops by grid position instead of selection order", () => {
+    const asset = { width: 2400, height: 1200 };
+    const slot = { width: 400, height: 1600 / 3 };
+    const crops = createGridMosaicSplitCrops({
+      asset,
+      aspectRatio: "3:4",
+      slotIndexes: [2, 1, 0],
+      slot,
+    });
+    const sourceRects = crops.map((crop) => getSourceCropRect(asset, crop, slot));
+
+    expect(sourceRects[0].sx).toBeCloseTo(0, 5);
+    expect(sourceRects[1].sx).toBeCloseTo(800, 5);
+    expect(sourceRects[2].sx).toBeCloseTo(1600, 5);
+  });
+
   it("creates mosaic crops using each selected grid slot position", () => {
     const asset = { width: 2400, height: 2400 };
     const slot = { width: 300, height: 300 };

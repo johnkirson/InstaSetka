@@ -3,6 +3,7 @@ import {
   createBatchExportFilename,
   createCarouselExportFilename,
   createExportFilename,
+  createSlotSizeFromWidth,
   getExportMimeType,
   getExportPreset,
   getSourceCropRect,
@@ -13,6 +14,12 @@ describe("export presets", () => {
     expect(getExportPreset("4:5")).toMatchObject({ width: 1080, height: 1350 });
     expect(getExportPreset("3:4")).toMatchObject({ width: 1080, height: 1440 });
     expect(getExportPreset("1:1")).toMatchObject({ width: 1080, height: 1080 });
+  });
+
+  it("creates fallback slot sizes that preserve the active aspect ratio", () => {
+    expect(createSlotSizeFromWidth("4:5", 400)).toEqual({ width: 400, height: 500 });
+    expect(createSlotSizeFromWidth("3:4", 400)).toEqual({ width: 400, height: 1600 / 3 });
+    expect(createSlotSizeFromWidth("1:1", 400)).toEqual({ width: 400, height: 400 });
   });
 
   it("maps export formats to browser image mime types", () => {

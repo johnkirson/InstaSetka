@@ -67,11 +67,14 @@ export function createGridMosaicSplitCrops(input: {
   columns?: number;
 }): CropState[] {
   const columns = input.columns ?? 3;
-  const slots = input.slotIndexes.map((slotIndex) => ({
-    slotIndex,
-    column: slotIndex % columns,
-    row: Math.floor(slotIndex / columns),
-  }));
+  const slots = [...new Set(input.slotIndexes)]
+    .filter((slotIndex) => slotIndex >= 0)
+    .sort((left, right) => left - right)
+    .map((slotIndex) => ({
+      slotIndex,
+      column: slotIndex % columns,
+      row: Math.floor(slotIndex / columns),
+    }));
 
   if (slots.length === 0) {
     return [];
